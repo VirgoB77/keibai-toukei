@@ -204,6 +204,75 @@ class 入口のURL(unittest.TestCase):
                          "site_url のホストと、GitHub が配信しているドメインが違う")
 
 
+class 配る場所は1か所に書く(unittest.TestCase):
+    """**しまう場所と配る場所は別**（DESIGN「公開用の棚」・2026-09-19）。
+
+        金庫   data/public/index.json   しまう場所（ここだけが公開してよい置き場）
+        公開用 data/index.json          配る場所（金庫から写したものだけ）
+
+    金庫の `public/` は「ここから先は出してよい」という仕切りの名前で、
+    配る側では意味が無い。**配る側の棚に内側の仕切りの名前を持ち込まない。**
+
+    ここが3つに割れていた（2026-09-19 に気づいた）。
+
+        DESIGN.md     （公開用）/data/index.json
+        実際の木       data/public/index.json
+        配信の確認     /index.json            ← 404 になって気づいた
+
+    **site_url がまだ空で、姉妹サイトも誰も引いていないうちに直した。**
+    引かれたあとだと、直すほうが壊す。
+    """
+
+    def test_置き場はDESIGNのとおり(self):
+        self.assertEqual(site.INDEX_PATH, "data/index.json")
+
+    def test_入口と合わせてURLになる(self):
+        import common.site as m
+        keep = dict(m.SITE)
+        keepenv = os.environ.pop("SITE_URL", None)
+        try:
+            m.SITE["site_url"] = "https://keibai-toukei.com"
+            self.assertEqual(m.index_url(),
+                             "https://keibai-toukei.com/data/index.json")
+            m.SITE["site_url"] = ""
+            self.assertEqual(m.index_url(), "",
+                             "配信がまだ無い日に絶対URLを名乗らない")
+        finally:
+            m.SITE.clear()
+            m.SITE.update(keep)
+            if keepenv is not None:
+                os.environ["SITE_URL"] = keepenv
+
+    def test_配信の確認が同じ置き場を見る(self):
+        """**2か所に書かない。** 片方だけ直ると404で気づくことになる。"""
+        import inspect
+        sys.path.insert(0, os.path.join(ROOT, "scripts"))
+        import check_haishin
+        src = inspect.getsource(check_haishin.見る)
+        self.assertIn("site.INDEX_PATH", src)
+        self.assertNotIn('"/index.json"', src)
+
+    def test_公開用の木が配る場所に置く(self):
+        try:
+            import scripts.make_public_tree as m
+        except ImportError:
+            self.skipTest("許可リストは金庫にしかない（公開用では、これが正しい）")
+        self.assertEqual(m.RENAME.get("data/public/index.json"),
+                         site.INDEX_PATH)
+        self.assertNotIn("data/public/index.json", m.FILES,
+                         "しまう場所のまま配っている")
+
+    def test_DESIGNに書いてある形と合っている(self):
+        """**書いたものと動くものを突き合わせる。** 片方だけ直る形を潰す。"""
+        path = os.path.join(ROOT, "DESIGN.md")
+        if not os.path.exists(path):
+            self.skipTest("DESIGN.md がここには無い")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn("（公開用）/%s" % site.INDEX_PATH, text,
+                      "DESIGN の棚と site.INDEX_PATH が食い違っている")
+
+
 class 退役した名前(unittest.TestCase):
     """**退役した名前の一覧と比べる。現在値と比べない**（正本 9節）。
 

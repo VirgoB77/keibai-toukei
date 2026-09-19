@@ -95,6 +95,25 @@ def id_prefix():
     return SITE.get("id_prefix") or SITE.get("site_id") or ""
 
 
+# 配るときの置き場（DESIGN「公開用の棚」）。
+#
+#     金庫   data/public/index.json   **しまう場所**（ここだけが公開してよい置き場）
+#     公開用 data/index.json          **配る場所**（金庫から写したものだけ）
+#
+# 金庫の `public/` は「ここから先は出してよい」という仕切りの名前で、
+# 配る側では意味が無い。**配る側の棚に内側の仕切りの名前を持ち込まない。**
+#
+# **URLはここ1か所にだけ書く**（正本 3.4）。
+# 配信の確認も、姉妹サイトに伝える URL も、ここから作る。
+INDEX_PATH = "data/index.json"
+
+
+def index_url():
+    """姉妹サイトに渡す一覧の URL。配信がまだなら空文字。"""
+    b = base_url()
+    return (b + INDEX_PATH) if b else ""
+
+
 def base_url():
     """公開したサイトの入口。**末尾は必ず `/` にそろえて返す。**
 

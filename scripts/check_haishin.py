@@ -74,7 +74,8 @@ def 取りに行く(url):
 
 def 見る(base):
     """配られている index.json を見る。戻り値は終了コード（0 なら止めない）。"""
-    url = base.rstrip("/") + "/index.json"
+    # **置き場は site.py の1か所から取る。** ここに書き直さない
+    url = base.rstrip("/") + "/" + site.INDEX_PATH
     print("取りに行く: %s" % url)
     code, body = 取りに行く(url)
 

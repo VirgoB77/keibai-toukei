@@ -253,11 +253,23 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # **symlink をそのまま add しない。** 実体を写してから add する
-          rm -rf data/public
-          mkdir -p data/public
-          cp "${RAW_DIR}"/data/public/*.json data/public/ 2>/dev/null || true
-          git add data/public/index.json
+          # **symlink をそのまま add しない。** 実体を写してから add する。
+          #
+          # **しまう場所と配る場所は別**（DESIGN「公開用の棚」・2026-09-19）。
+          #     金庫   data/public/index.json   しまう場所
+          #     公開用 data/index.json          配る場所
+          # 金庫の `public/` は「ここから先は出してよい」という仕切りの名前で、
+          # 配る側では意味が無い。配る側の棚に内側の仕切りの名前を持ち込まない。
+          #
+          # **`data/` を丸ごと消さない。** ここには金庫への symlink が
+          # 並んでいる（`data/raw` `data/rows` …、`data/inbox-ledger.json` も）。
+          # `rm -f data/*.json` はその symlink まで持っていく。
+          # **配る json だけを名指しで置く。**
+          for f in "${RAW_DIR}"/data/public/*.json; do
+            [ -e "$f" ] || continue
+            cp "$f" "data/$(basename "$f")"
+            git add "data/$(basename "$f")"
+          done
           test -f robots.txt && git add robots.txt || true
           test -f sitemap.xml && git add sitemap.xml || true
           test -f index.html && git add index.html || true

@@ -37,10 +37,22 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, "scripts"))
 
 from common.report import NOT_PUBLIC_LINE  # noqa: E402
+from common import site  # noqa: E402  配る場所は site.py が持つ
 from common.shukei import NOT_PUBLIC  # noqa: E402
 
 AGG = os.path.join(HERE, "data", "agg")
+# **しまう場所と配る場所は別**（DESIGN「公開用の棚」・2026-09-19）。
+#
+#     金庫   data/public/index.json   しまう場所
+#     公開用 data/index.json          配る場所
+#
+# この検査は**どちらの木でも走る**。置き場を1つに決め打つと、
+# 片方の木で「ファイルが無い」で落ちる（公開用の clone で実際に落ちた）。
+# **どちらにあるかを見て決める。無ければ金庫の形を名乗る**（`kinko.need` が skip する）。
 PUBLIC = os.path.join(HERE, "data", "public")
+if not os.path.isdir(PUBLIC) and os.path.exists(
+        os.path.join(HERE, site.INDEX_PATH)):
+    PUBLIC = os.path.dirname(os.path.join(HERE, site.INDEX_PATH))
 MARK = "公開しない"
 
 

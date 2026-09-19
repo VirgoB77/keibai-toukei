@@ -411,6 +411,29 @@ class 公開用のworkflowの控え(unittest.TestCase):
         self.assertEqual(self.body.count("sh scripts/check.sh"), 2,
                          "検査が2回通っていない（作る前と、送る前）")
 
+    def test_配る場所に置く(self):
+        """**しまう場所と配る場所は別**（DESIGN「公開用の棚」）。
+
+        金庫の `data/public/` は「ここから先は出してよい」という仕切りの
+        名前で、配る側では意味が無い。
+        """
+        from common import site
+        公開 = self.body[self.body.index("公開用にしまう（許可リスト）"):]
+        self.assertIn('git add "data/$(basename "$f")"', 公開)
+        self.assertNotIn("git add data/public/index.json", 公開,
+                         "しまう場所のまま配っている")
+
+    def test_dataを丸ごと消さない(self):
+        """**`data/` には金庫への symlink が並んでいる。**
+
+        `data/raw` `data/rows` … と `data/inbox-ledger.json`。
+        `rm -f data/*.json` はその symlink まで持っていく。
+        消えると「取り込んだ」の記録が飛び、同じものを毎朝催促する。
+        """
+        公開 = self.body[self.body.index("公開用にしまう（許可リスト）"):]
+        for 危ない in ("rm -rf data\n", "rm -f data/*.json", "rm -rf data/*"):
+            self.assertNotIn(危ない, 公開, 危ない)
+
     def test_公開用には丸ごとaddしない(self):
         """**許可リストが掛かるのは公開用だけ。**
 
