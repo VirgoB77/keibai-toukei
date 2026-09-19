@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""名乗りと連絡先を、1か所から配る。
+
+正本 3.4「URL は設定の1か所にだけ書き、公開したら about ページの URL に差し替える」。
+中身は common/site.json。直すのはあちら。
+
+名乗りの形（about ページが**まだ無い**あいだ）:
+
+    kujiraya archive bot (<ua_label>; https://forms.gle/xxxxx)
+
+about ページを公開したら、site.json の about_url を入れる。すると自動でこうなる:
+
+    kujiraya archive bot (+https://.../about.html; https://forms.gle/xxxxx)
+
+**404 になる URL は入れない。** 確認できない名乗りは、名乗らないより不審に見える。
+相手のサーバー管理者が調べて404だったら、それだけでブロック候補になる。
+"""
+
+import json
+import os
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+PATH = os.path.join(HERE, "site.json")
+
+# **名前を持たせない。** ここに名前を書くと、site.json が読めなかった日に
+# 黙ってその名前で外に名乗ることになる。名前の正は site.json の1か所だけ。
+_DEFAULT = {
+    "bot_name": "kujiraya archive bot",
+    "site_id": "",
+    "id_prefix": "",
+    "ua_label": "",
+    "contact_url": "",
+    "about_url": "",
+    "operator": "鯨屋（くじらや）",
+    "operator_note": "",
+    "contact_note": "",
+}
+
+
+def _load():
+    """site.json を読む。**読めなければ止まる。**
+
+    前は黙って `_DEFAULT` を返していた。そうすると、設定が壊れた日に
+    **古い名前で、連絡先の無い名乗り**で相手のサーバーに出ていく。
+    括弧の中が空の名乗りは、正本 3.4「確認できない名乗りは、名乗らないより
+    不審に見える」そのもの。しかも**失敗した日にしか出ない**ので、
+    テストでも手元の確認でも見えない。気づく先は相手のログの中だけ。
+
+    **「取りに行かない日」を作るほうが、古い名前で行く日を作るよりましだ。**
+    毎朝の workflow は `if: always()` でその朝の生データを先にしまうので、
+    ここで止まっても取り直せないものは失われない。
+    """
+    try:
+        with open(PATH, encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError) as e:
+        raise RuntimeError(
+            "common/site.json が読めない（%s）。"
+            "名乗りが作れないので、今日は取りに行かない。"
+            "**古い名前で名乗るより、止まるほうがよい**（正本 3.4）" % e)
+    out = dict(_DEFAULT)
+    out.update({k: v for k, v in d.items() if not k.startswith("_")})
+    if not out["site_id"]:
+        raise RuntimeError("common/site.json に site_id が無い")
+    return out
+
+
+# **退役した名前。消さない**（正本 9節）。
+# 現在値と比べる作りにしない。手で直した瞬間に old == new になり、
+# 見張りが黙って空振りする。**一覧と比べる。**
+RETIRED_NAMES = (
+    "ic-log",        # 2026-09-17 退役。publish.sh の宛先として書いてあった置き場
+    "keibai-data",   # 2026-09-18 退役。金庫は keibai-toukei-raw へ rename する
+)
+
+
+SITE = _load()
+
+
+def contact_url():
+    return SITE.get("contact_url") or ""
+
+
+def about_url():
+    return SITE.get("about_url") or ""
+
+
+def id_prefix():
+    """レコードの id の頭（正本 6節）。
+
+    `<接頭辞>:<source>:<date>:<連番>`。**site_id と同じでなくてよい。**
+    正本2節の表で衝突しないことだけが要件。
+    """
+    return SITE.get("id_prefix") or SITE.get("site_id") or ""
+
+
+def user_agent():
+    """名乗り。about ページがあるときだけ、そのURLを入れる。
+
+    about ページが無いあいだの頭は `ua_label`。**`site_id` ではない。**
+    site_id は内部の鍵で、外に名乗る名前とは別の速さで決まる
+    （site_id は records が0件のうちに、名乗りはドメインを検証してから）。
+    `ua_label` が空なら site_id に落ちる。
+    """
+    head = about_url() or SITE.get("ua_label") or SITE.get("site_id") or "kujiraya"
+    if about_url():
+        head = "+" + head
+    return "%s (%s; %s)" % (SITE.get("bot_name"), head, contact_url())

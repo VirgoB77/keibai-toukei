@@ -1,0 +1,220 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""名乗りを1か所から配る（正本 3.4・6節・9節）。
+
+**site_id と、外に名乗る名前は、別の速さで決まる。**
+
+    site_id    内部の鍵。**records が0件のうち**に決める（9節「鍵は変えない」）
+    名乗り     相手のサーバーに届く。**ドメインを検証してから**でないと、
+               相手が調べても存在せず、3.4「確認できない名乗りは、
+               名乗らないより不審に見える」に触れる
+
+だからこのサイトは、2026-09-18 に site_id だけを先に当てて、
+名乗り（UA）は `ua_label` で据え置いている。
+
+**据え置きは消し忘れる。** about ページを公開して `about_url` が入れば
+`user_agent()` はそちらを使うので、`ua_label` は要らなくなる。
+残っていても動くので、走らせても気づけない。だから下の
+`test_⓪が済んだらua_labelを消す` が鳴る。
+
+**鳴らして確かめた**（正本 9節。2026-09-18）。書いたから動くはず、で止めない。
+
+    about_url を入れて ua_label を残す（消し忘れ）  → 2件 鳴った
+    ua_label を消して site_id に落とす              → 2件 鳴った
+    site_url に未公開のURLを入れる                  → 1件 鳴った
+    戻す                                            → 黙った
+
+    python3 -m unittest discover -s tests
+"""
+
+import json
+import os
+import sys
+import unittest
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+from common import site  # noqa: E402
+
+PATH = os.path.join(ROOT, "common", "site.json")
+
+
+def raw():
+    with open(PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+
+class 決めた名前(unittest.TestCase):
+    """2026-09-18 の決定。**もう変えない**（正本 9節）。"""
+
+    def test_site_idはドメインの語幹(self):
+        self.assertEqual(site.SITE["site_id"], "keibai-toukei")
+
+    def test_接頭辞は2節の表のとおり(self):
+        self.assertEqual(site.id_prefix(), "keibai")
+
+    def test_リポジトリ名をsite_idに使わない(self):
+        """リポジトリ名は変わる（金庫は `keibai-toukei-raw` に rename する）。
+
+        正本 9節「鍵にはあとから変わらないものだけを入れる」。
+        """
+        for bad in ("keibai-data", "keibai-toukei-raw", "ic-log"):
+            self.assertNotEqual(site.SITE["site_id"], bad)
+
+
+class 名乗りは据え置き(unittest.TestCase):
+    """**⓪（ドメインの検証）が済むまで、外向きの名乗りは変えない。**"""
+
+    def test_UAは決めた名前になっている(self):
+        """⓪（ドメインの検証）が 2026-09-19 に済んだので当てた。
+
+        据え置いていたのは、検証の前に名乗ると**相手が調べても存在せず**、
+        正本 3.4「確認できない名乗りは、名乗らないより不審に見える」に
+        触れるため。検証が済んだので、その理由が無くなった。
+        """
+        self.assertIn("keibai-toukei", site.user_agent())
+
+    def test_UAに連絡先が入っている(self):
+        """正本 3.4「UA に連絡先の URL を入れる」。"""
+        self.assertIn(site.contact_url(), site.user_agent())
+        self.assertTrue(site.contact_url().startswith("https://"))
+
+    def test_site_urlはまだ空(self):
+        """**⓪が済んでも、まだ配信していない。**
+
+        ⓪（Verified domains）は「ほかの人にドメインを取られない」ことを
+        保証するだけで、「そこに何かがある」ことは保証しない。
+        2026-09-19 時点で keibai-toukei.com は DNS が引けない。
+
+        正本 3.4「**404 を入れない**。まだ公開していないページのURLは入れない」。
+        **Pages が配信を始めた日に入れる。**
+        """
+        self.assertEqual(site.SITE.get("site_url", ""), "")
+
+    def test_ドメイン検証が済んだらua_labelを消す(self):
+        """**据え置きは消し忘れる。**
+
+        about ページを公開して `about_url` が入れば `user_agent()` は
+        そちらを使うので、`ua_label` は要らなくなる。
+        残っていても動くので、走らせても気づけない。ここが鳴る。
+        """
+        d = raw()
+        if not d.get("about_url"):
+            self.assertTrue(
+                d.get("ua_label"),
+                "about_url がまだ空なのに ua_label も空。"
+                "名乗りが site_id に落ちて、検証前のドメイン名を名乗ることになる")
+            return
+        self.assertFalse(
+            d.get("ua_label"),
+            "about ページを公開したのに ua_label が残っている。"
+            "名乗りが2つある状態になるので、common/site.json から消すこと")
+
+
+class 退役した名前(unittest.TestCase):
+    """**退役した名前の一覧と比べる。現在値と比べない**（正本 9節）。
+
+    現在値と比べる作りにすると、手で直した瞬間に old == new になり、
+    見張りが黙って空振りする。
+
+    **ここには1つ、わざと退役名が残っている場所がある。**
+    `ua_label`（＝ UA の頭）は `keibai-data` のままで、これは
+    ⓪（ドメインの検証）が済むまでの据え置き。意図して残しているので、
+    テストは「残っていること」ではなく **「いつまで残ってよいか」** を見張る。
+    """
+
+    def test_site_idに退役名を使わない(self):
+        for old in site.RETIRED_NAMES:
+            self.assertNotEqual(site.SITE["site_id"], old, old)
+            self.assertNotEqual(site.id_prefix(), old, old)
+
+    def test_出す升のsiteに退役名を使わない(self):
+        import make_index
+        for old in site.RETIRED_NAMES:
+            self.assertNotEqual(make_index.SITE, old, old)
+            self.assertNotEqual(make_index.PREFIX, old, old)
+
+    def test_UAに退役名が1つも出ない(self):
+        """**⓪が済んだので、据え置きの理由が無くなった**（2026-09-19）。
+
+        据え置いていたあいだは、`ua_label` としてだけ退役名が出てよかった。
+        いまは1つも出てはいけない。
+        """
+        ua = site.user_agent()
+        for old in site.RETIRED_NAMES:
+            self.assertNotIn(old, ua, old)
+
+    def test_退役名の一覧を減らさない(self):
+        """**消さない。** 減らすと、次に同じ名前が戻ってきても鳴らない。"""
+        for old in ("ic-log", "keibai-data"):
+            self.assertIn(old, site.RETIRED_NAMES, old)
+
+
+class 設定が読めない日は止まる(unittest.TestCase):
+    """**古い名前で行く日を作るより、取りに行かない日を作る**（正本 3.4）。
+
+    前は黙って既定値を返していた。そうすると設定が壊れた日に、
+    古い名前で・連絡先の無い名乗りで相手のサーバーに出ていく。
+    しかも**失敗した日にしか出ない**ので、テストでも手元でも見えない。
+    """
+
+    def test_読めなければ例外(self):
+        import tempfile
+        import common.site as m
+        keep = m.PATH
+        try:
+            m.PATH = os.path.join(tempfile.mkdtemp(), "no-such.json")
+            with self.assertRaises(RuntimeError):
+                m._load()
+        finally:
+            m.PATH = keep
+
+    def test_site_idが無ければ例外(self):
+        import tempfile
+        import common.site as m
+        keep = m.PATH
+        d = tempfile.mkdtemp()
+        path = os.path.join(d, "site.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"bot_name": "x"}, f)
+        try:
+            m.PATH = path
+            with self.assertRaises(RuntimeError):
+                m._load()
+        finally:
+            m.PATH = keep
+
+    def test_既定値に名前を持たせない(self):
+        """既定値に名前を書くと、読めなかった日にその名前で名乗る。"""
+        self.assertEqual(m_default()["site_id"], "")
+        self.assertEqual(m_default()["id_prefix"], "")
+        self.assertEqual(m_default()["ua_label"], "")
+
+
+def m_default():
+    import common.site as m
+    return m._DEFAULT
+
+
+class 名乗りは1か所から(unittest.TestCase):
+
+    def test_URLをコードに直書きしていない(self):
+        """正本 3.4「URL は設定の1か所にだけ書く」。"""
+        import glob
+        bad = []
+        for path in glob.glob(os.path.join(ROOT, "*.py")) + \
+                glob.glob(os.path.join(ROOT, "common", "*.py")):
+            if os.path.basename(path) == "site.py":
+                continue
+            with open(path, encoding="utf-8") as f:
+                for i, line in enumerate(f, 1):
+                    if line.lstrip().startswith("#"):
+                        continue
+                    if "forms.gle" in line or "keibai-toukei.com" in line:
+                        bad.append("%s:%d" % (os.path.basename(path), i))
+        self.assertEqual(bad, [], "URL が common/site.json の外に書いてある")
+
+
+if __name__ == "__main__":
+    unittest.main()
