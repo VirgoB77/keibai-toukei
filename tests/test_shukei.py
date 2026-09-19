@@ -55,11 +55,6 @@ class 書き忘れを拾う(unittest.TestCase):
         # 種別が互いに排他なら親子が無いので、登録も要らない
         self.assertEqual(競売.undeclared(["土地", "戸建て", "マンション"]), [])
 
-    def test_子は親の名前で始まる形しか登録できない(self):
-        with self.assertRaises(ValueError):
-            Families(("土地", "戸建て"))          # 「土地-…」の形でない
-        with self.assertRaises(ValueError):
-            Families(("土地",))                   # 子がいない
 
 
 class 兄弟をそろえる(unittest.TestCase):

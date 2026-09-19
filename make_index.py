@@ -287,6 +287,16 @@ def build(rows, today=None):
         # `data/parse-unknown.md` には aggregate.py が書いた
         # 「合っている」がそのまま残り、`if: always()` で commit された
         write_kazu(rows, everything, today, cell_rows=counted)
+        # **止まったことを、走らせた記録にも出す**（2026-09-19）。
+        # 止まった日は `index.json` を書き直さないので、**前の日のものが
+        # そのまま残る。** 中身は古いが `generated_at` も古いので嘘は言わない。
+        # ただし「今日は止まった」は、ログを見ないと分からない。
+        # Actions の注記にして、翌朝の一覧で赤く出るようにする
+        print("::error::数が合わないので index.json を作らなかった。"
+              "前の日のものがそのまま残っている（generated_at を見ること）",
+              file=sys.stderr)
+        for b in kazu["食い違い"]:
+            print("::error::  " + b, file=sys.stderr)
         raise RuntimeError(
             "数が合わない。黙って落としている。\n  "
             + "\n  ".join(kazu["食い違い"]))

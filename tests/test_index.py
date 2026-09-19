@@ -395,6 +395,32 @@ class 正本32_合計の升と内訳の升を両方出さない(unittest.TestCas
         for stage in aggregate.PARENTS:
             self.assertNotIn("-", stage, stage)
 
+    def test_undeclaredは接頭辞なしの段階を拾えない(self):
+        """**この網が何を見ていないかを、書いておく。**
+
+        `undeclared()` は「-」を含む名前しか拾わない。
+        結果の語が `結果-落札` → `落札` になった日から、
+        **接頭辞を持たない段階の登録忘れは、この網を素通りする。**
+        上のテストは一括置換で `落札` を渡すようになっていて、
+        素通りすることを**偶然**示していたが、そうとは書いていなかった。
+
+        素通りしたものを受けるのは `kazu_ga_au()` のほう
+        （升に出る段階が全部登録されているか）。**2本で1組。**
+        """
+        import aggregate
+        self.assertEqual(aggregate.FAMILIES.undeclared(["落札", "取下げ"]), [],
+                         "接頭辞なしの段階を undeclared が拾えるようになった")
+        # 受けるのはこちら
+        rows = [{"system": "keibai", "pref": "兵庫県", "city": "西宮市",
+                 "city_code": "28204", "kind": "土地",
+                 "first_seen": "2026-09-01", "open_date": "2026-09-10",
+                 "status": "売却"}]
+        cells = aggregate.aggregate(rows, with_raw=True)
+        にせ = cells + [dict(cells[0], stage="取下げ", _n=1)]
+        d = aggregate.kazu_ga_au(rows, にせ, today="2026-09-19")
+        self.assertTrue(any("登録されていない段階" in b for b in d["食い違い"]),
+                        "素通りしたものを、誰も受けていない")
+
     def test_出した内訳は全部まとまりに属している(self):
         # 実際に出した升を見て、知らない内訳が混ざっていないか確かめる
         import aggregate

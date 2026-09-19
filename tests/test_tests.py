@@ -31,10 +31,43 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-def test_files():
+def py_files():
+    """`tests/` の `.py` を全部返す（2026-09-19 に広げた）。
+
+    前は `test_` で始まるものだけを見ていた。`kinko.py` のような
+    手伝いのファイルに TestCase を置かれると、**番人の見張りから外れる。**
+    「番人のあとに定義を置かない」は、置き場で切らずに全部に掛ける。
+    """
     for name in sorted(os.listdir(HERE)):
-        if name.startswith("test_") and name.endswith(".py"):
+        if name.endswith(".py") and not name.startswith("_"):
             yield name, os.path.join(HERE, name)
+
+
+def test_files():
+    """**TestCase を持つファイルだけ**返す。
+
+    「番人がある」は、直に走らせる意味があるファイルにだけ求める。
+    `kinko.py` は手伝いのモジュールで、直に走らせるものではない。
+    **持っているかどうかで決める。名前では決めない**
+    （名前で決めると、`kinko.py` に TestCase を置いた日に外れる）。
+    """
+    for name, path in py_files():
+        with io.open(path, encoding="utf-8") as f:
+            tree = ast.parse(f.read(), filename=name)
+        if any(_is_testcase(n) for n in ast.walk(tree)):
+            yield name, path
+
+
+def _is_testcase(node):
+    """`unittest.TestCase` を継いだクラスか。"""
+    if not isinstance(node, ast.ClassDef):
+        return False
+    for b in node.bases:
+        if isinstance(b, ast.Attribute) and b.attr == "TestCase":
+            return True
+        if isinstance(b, ast.Name) and b.id == "TestCase":
+            return True
+    return False
 
 
 class 番人はいちばん下に置く(unittest.TestCase):
@@ -45,7 +78,7 @@ class 番人はいちばん下に置く(unittest.TestCase):
         書くと、そのファイルを直に走らせたときだけ黙って落ちる。
         """
         bad = []
-        for name, path in test_files():
+        for name, path in py_files():
             with io.open(path, encoding="utf-8") as f:
                 tree = ast.parse(f.read(), filename=name)
             guard = None
@@ -93,6 +126,9 @@ class 番人はいちばん下に置く(unittest.TestCase):
         このファイルも入っている。入っていることを固定しておく。
         """
         self.assertIn("test_tests.py", [n for n, _ in test_files()])
+        # 「番人のあとに定義を置かない」は手伝いのファイルにも掛ける
+        self.assertIn("kinko.py", [n for n, _ in py_files()],
+                      "手伝いのファイルが網から外れている")
         self.assertTrue(list(test_files()), "1本も見ていない")
 
 
