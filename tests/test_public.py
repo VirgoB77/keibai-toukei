@@ -409,7 +409,11 @@ class 道具2つが同じ木を見ている(unittest.TestCase):
         # どちらも公開用のリポジトリで動くものなので、3.3 が掛かる。
         # **直せないものではない**ので、鳴っても言い換えられる
         def は_workflowの中身(rel):
-            return rel.startswith(".github/") or rel.endswith("-workflow.yml")
+            # **拡張子で選ばない**（2026-09-19）。GitHub は .yml も .yaml も走らせる。
+            # `-workflow.yml` だけを許すと、`.yaml` に変えた日にここが鳴りだす
+            return (rel.startswith(".github/")
+                    or os.path.basename(rel).startswith("public-")
+                    and rel.endswith((".yml", ".yaml")))
 
         はみ出し = sorted(r for r in 見る - 出す
                        if not は_workflowの中身(r))
@@ -545,6 +549,54 @@ class 金庫が隣に出ていても歩かない(unittest.TestCase):
             文 = f.read()
         self.assertTrue(any(w in 文 for w in check_copy.NG),
                         "置いた文に評価の語が無い。試験が空回りする")
+
+
+class 見張りを名前の一覧で作らない(unittest.TestCase):
+    """**見張りが知っているのは、見張りに書いた形だけ**（2026-09-19）。
+
+    統括で出た形をこちらでも探した。**3つあった。**
+
+        workflow の見張り     `*.yml` だけ。`.yaml` にすると18本が黙った
+        URL の直書きの見張り   `ROOT/*.py` と `common/*.py` だけ。scripts/ が外
+        評価の言葉の見張り     見る拡張子を並べていた。`.sh` が外
+
+    どれも「見るものを並べる」形だった。
+    **並べる向きを逆にすると、足し忘れは鳴る側に落ちる。**
+    """
+
+    def test_見る拡張子を並べない(self):
+        """`check_copy` は**見ないもの**を並べる。理由つきで。"""
+        sys.path.insert(0, os.path.join(HERE, "scripts"))
+        import check_copy
+        self.assertFalse(hasattr(check_copy, "TARGET_SUFFIX"),
+                         "見るものを並べている。足した日に黙る")
+        self.assertTrue(check_copy.SKIP_SUFFIX)
+        for k, なぜ in check_copy.SKIP_SUFFIX.items():
+            self.assertTrue(なぜ, "%s を見ない理由が書いていない" % k)
+
+    def test_公開する木のファイルは全部いきさきが決まっている(self):
+        """**見るか、理由つきで見ないか。** どちらでもないものを作らない。"""
+        sys.path.insert(0, os.path.join(HERE, "scripts"))
+        import check_copy
+        木 = os.path.join(HERE, "data")     # 金庫では木が無いので data で代用
+        if not os.path.isdir(木):
+            self.skipTest("見る木が無い")
+        宙ぶらりん = []
+        for cur, dirs, files in os.walk(HERE):
+            dirs[:] = [d for d in dirs
+                       if d not in (".git", "__pycache__", "inbox", "_raw",
+                                    "data", "docs", "tests")]
+            for name in files:
+                ext = os.path.splitext(name)[1]
+                if name in check_copy.SKIP_NAME:
+                    continue
+                if ext in check_copy.SKIP_SUFFIX:
+                    continue
+                if ext:
+                    continue          # 見る側。これでよい
+                宙ぶらりん.append(name)
+        self.assertEqual(宙ぶらりん, [],
+                         "拡張子が無くて、見ない理由も書いていない")
 
 
 if __name__ == "__main__":

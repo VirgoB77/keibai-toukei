@@ -39,7 +39,31 @@ NG = (
 # 数字の読み方に関わる言葉は、評価ではないので対象にしない
 # （凡例の「少ない／多い」、本文の「大きくなりやすい」など）。
 
-TARGET_SUFFIX = {".html", ".css", ".xml", ".md", ".py", ".yml"}
+# **見る拡張子を並べない。見ない拡張子を並べる**（2026-09-19）。
+#
+# 前は「見るもの」を並べていた。すると**新しい形を足した日に黙る。**
+# 実際に `scripts/check.sh` が見張りの外だった。公開する木に入っていて、
+# 日本語の説明がたくさん書いてあるのに、1行も見ていなかった
+# （評価の言葉を入れて確かめた。`exit=0`、0件）。
+#
+# **見張りが知っているのは、見張りに書いた形だけ。**
+# 名前を並べる向きを逆にすると、足し忘れは「鳴る」側に落ちる。
+#
+# 見ないものには**理由を書く**。理由が書けないなら、それは見るもの。
+SKIP_SUFFIX = {
+    ".json": "実在の地名・コードが入る。**直せないものを見張らない**",
+    ".pyc": "機械が作るもの",
+    ".png": "画像", ".jpg": "画像", ".gif": "画像", ".svg": "画像",
+    ".ico": "画像", ".woff": "字の形", ".woff2": "字の形",
+}
+
+# 拡張子が無いもの。**1つずつ理由を書く**（数が少ないうちに決めておく）
+SKIP_NAME = {
+    ".gitignore": "git への指示。人が読む本文ではない",
+    ".nojekyll": "空ファイル。Pages への合図",
+    "CNAME": "ドメイン名1行。GitHub が書く",
+    ".gitkeep": "空ファイル。git に空の置き場を持たせるため",
+}
 
 # 自分自身は見ない。NG語を文字列として持っているので必ず当たる
 # 自分自身と、**金庫にだけ置くと自分で名乗っているもの**は見ない。
@@ -83,8 +107,13 @@ def walk(root, everything=False):
         for name in sorted(files):
             if name in SELF:
                 continue
-            if os.path.splitext(name)[1] not in TARGET_SUFFIX:
+            if name in SKIP_NAME:
                 continue
+            if os.path.splitext(name)[1] in SKIP_SUFFIX:
+                continue
+            if not os.path.splitext(name)[1] and name not in SKIP_NAME:
+                # 拡張子が無くて、理由も書いていない → **見る**（きつい側）
+                pass
             rel = "/".join(filter(None, [rel_dir, name]))
             if not everything and _under(rel, VAULT_ONLY):
                 continue

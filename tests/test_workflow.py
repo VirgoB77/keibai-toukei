@@ -68,7 +68,28 @@ def top_env(text):
 
 
 def workflows():
-    return sorted(glob.glob(os.path.join(WF, "*.yml")))
+    """`.github/workflows/` に置いてあるもの**全部**。
+
+    **拡張子で選ばない**（2026-09-19）。前は `*.yml` だけを見ていた。
+
+    GitHub Actions は `.yml` も `.yaml` も走らせる。
+    実際に `keibai.yml` を `keibai.yaml` に変えて確かめたら、
+    **583本すべてが緑のまま通り、18本が黙って skip に落ちた。**
+
+        名前による自己停止／鍵が無ければ止まる／金庫が非公開かの確認
+        ／収集用→公開用の順番／配信の確認 …
+
+    走るものは変わらないのに、見張りだけが消えた。
+    **見張りが知っているのは、見張りに書いた形だけ。**
+
+    だから**置いてあるものを全部返す**。拡張子で落とさない。
+    workflow でないものが混ざっていたら、それは
+    `test_workflowでないものを置かない` が鳴らす（**落とさずに鳴らす**）。
+    """
+    if not os.path.isdir(WF):
+        return []
+    return sorted(os.path.join(WF, n) for n in os.listdir(WF)
+                  if os.path.isfile(os.path.join(WF, n)))
 
 
 def step_body(text, name):
@@ -99,6 +120,42 @@ def run_body(body, repo, mark):
         p = subprocess.run(["sh", path], cwd=d,
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         return p.returncode, p.stdout.decode("utf-8", "replace")
+
+
+class workflowの置き場(unittest.TestCase):
+    """**置いてあるものを全部見る。拡張子で落とさない**（2026-09-19）。"""
+
+    def test_workflowでないものを置かない(self):
+        """`.github/workflows/` に入るのは workflow だけ。
+
+        **落とさずに鳴らす。** 落とすと、置き場に紛れたものが
+        「見張りの外」になる。GitHub は `.yml` と `.yaml` を走らせるので、
+        それ以外が置いてあるなら、それは置き間違い。
+        """
+        for path in workflows():
+            name = os.path.basename(path)
+            self.assertTrue(name.endswith((".yml", ".yaml")),
+                            "%s は workflow ではない。置き場が違う" % name)
+
+    def test_拡張子を変えても見張りが消えない(self):
+        """**これが 2026-09-19 に踏んだ形。**
+
+        `*.yml` だけを見ていたので、`.yaml` に変えると18本が黙って
+        skip に落ちた。GitHub は走らせるのに、見張りだけが消えた。
+        """
+        import tempfile
+        d = tempfile.mkdtemp()
+        for name in ("a.yml", "b.yaml", "c.txt"):
+            with open(os.path.join(d, name), "w", encoding="utf-8") as f:
+                f.write("name: x\n")
+        keep = globals()["WF"]
+        try:
+            globals()["WF"] = d
+            got = sorted(os.path.basename(p) for p in workflows())
+        finally:
+            globals()["WF"] = keep
+        self.assertEqual(got, ["a.yml", "b.yaml", "c.txt"],
+                         "拡張子で落としている。落とすと見張りの外になる")
 
 
 class 名前による自己停止(unittest.TestCase):
@@ -194,8 +251,9 @@ class 走った日は1回だけ決める(unittest.TestCase):
 
     def test_dateを2回打たない(self):
         """commit のときに時計を打ち直さない。**上で決めた値を使う。**"""
-        import glob
-        for path in glob.glob(os.path.join(ROOT, ".github", "workflows", "*.yml")):
+        # **`workflows()` を通す。** ここで別に glob を書くと、
+        # 選び方が2か所になって片方だけ直る（2026-09-19）
+        for path in workflows():
             with io.open(path, encoding="utf-8") as f:
                 text = f.read()
             body = "\n".join(l for l in text.splitlines()

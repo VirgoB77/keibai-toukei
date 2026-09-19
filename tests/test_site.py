@@ -532,19 +532,41 @@ def m_default():
 class 名乗りは1か所から(unittest.TestCase):
 
     def test_URLをコードに直書きしていない(self):
-        """正本 3.4「URL は設定の1か所にだけ書く」。"""
-        import glob
+        """正本 3.4「URL は設定の1か所にだけ書く」。
+
+        **置き場を並べない。木を歩く**（2026-09-19）。
+
+        前は `ROOT/*.py` と `common/*.py` だけを見ていた。
+        **`scripts/` が見張りの外だった。** 実際に
+        `scripts/check_haishin.py` へ URL を直書きして確かめたら、
+        `exit=0`、1本も鳴らなかった。
+
+        **見張りが知っているのは、見張りに書いた形だけ。**
+        置き場を並べると、置き場を増やした日に黙る。
+
+        見ないのは2つだけ。理由を書く。
+          site.py   名乗りを作る側。**ここにだけ書いてよい**
+          tests/    値そのものを確かめる側。書いてあるのが仕事
+        """
         bad = []
-        for path in glob.glob(os.path.join(ROOT, "*.py")) + \
-                glob.glob(os.path.join(ROOT, "common", "*.py")):
-            if os.path.basename(path) == "site.py":
-                continue
+        で見る = []
+        for cur, dirs, files in os.walk(ROOT):
+            dirs[:] = [d for d in dirs
+                       if d not in (".git", "__pycache__", "tests",
+                                    "data", "inbox", "_raw", "docs")]
+            for name in files:
+                if name.endswith(".py") and name != "site.py":
+                    で見る.append(os.path.join(cur, name))
+        self.assertTrue(len(で見る) >= 10,
+                        "木を歩けていない（%d ファイル）" % len(で見る))
+        for path in sorted(で見る):
             with open(path, encoding="utf-8") as f:
                 for i, line in enumerate(f, 1):
                     if line.lstrip().startswith("#"):
                         continue
                     if "forms.gle" in line or "keibai-toukei.com" in line:
-                        bad.append("%s:%d" % (os.path.basename(path), i))
+                        bad.append("%s:%d"
+                                   % (os.path.relpath(path, ROOT), i))
         self.assertEqual(bad, [], "URL が common/site.json の外に書いてある")
 
 
