@@ -60,7 +60,10 @@ SELF = {"check_copy.py", "make_public_tree.py"}
 #
 # 2つの道具が「公開する木」を別々に決めていたのが元。
 # `tests/test_public.py` がそろっていることを見張る。
-VAULT_ONLY = ("data", "inbox", "docs", "tests/fixtures",
+# `_raw` は、公開用で走るときに金庫が出てくる場所（正本 9節）。
+# **中身は同じファイルなので、歩くと二重に見て、金庫の側で鳴る。**
+# 金庫のものは金庫の検査が見る。ここでは見ない
+VAULT_ONLY = ("data", "inbox", "docs", "tests/fixtures", "_raw",
               ".git", "__pycache__")
 
 

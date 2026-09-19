@@ -25,7 +25,9 @@ import glob
 import io
 import json
 import os
+import shutil
 import sys
+import tempfile
 import unittest
 
 import kinko  # noqa: E402
@@ -462,6 +464,75 @@ class 結果の語は落札と不調だけ(unittest.TestCase):
         self.assertEqual(bad, [],
                          "名前として相手の語を書いている（落札／不調に寄せる）:\n"
                          + "\n".join(bad))
+
+
+class 金庫が隣に出ていても歩かない(unittest.TestCase):
+    """**公開用で走るとき、金庫が `_raw/` に出ている**（正本 9節）。
+
+    中身は同じファイルなので、木を歩く見張りは**二重に見る。**
+    しかも除外は `common/jst.py` のような**根からの道**で書いてあるので、
+    `_raw/common/jst.py` には効かない。
+
+    2026-09-19、公開用の1回目がここで落ちた。
+    落ちたのは「取りに行く前」で、**そこは設計どおり**。
+    ただし、これは #14 / #23 / #26 とは別の形。
+
+        #14 #23 #26   金庫にあって、公開用の木に**無い**
+        これ           金庫が公開用の**中に出てくる**
+
+    前の3つは `--check`（木を見る）で捕まる。これは捕まらない。
+    **木は正しい。走るときの形が違う。**
+    """
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        self.raw = os.path.join(HERE, "_raw")
+        if os.path.exists(self.raw):
+            self.skipTest("本物の _raw がある。壊さない")
+        # 金庫を真似て、**わざと見張りに引っかかるもの**を置く
+        os.makedirs(os.path.join(self.raw, "common"))
+        with io.open(os.path.join(self.raw, "common", "jst.py"),
+                     "w", encoding="utf-8") as f:
+            f.write("import datetime\nx = datetime.datetime.now()\n")
+        # **評価の語を、この本文に直に書かない。**
+        # 書くと `check_copy` がこのファイルで鳴る（実際に鳴った）。
+        # 見張りの語そのものから作れば、語が増えても勝手についてくる
+        import check_copy
+        with io.open(os.path.join(self.raw, "README.md"),
+                     "w", encoding="utf-8") as f:
+            f.write("# " + check_copy.NG[0] + "物件\n")
+
+    def tearDown(self):
+        shutil.rmtree(self.raw, ignore_errors=True)
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def test_時計の見張りが金庫まで歩かない(self):
+        import test_hizuke
+        bad = [rel for rel, _ in test_hizuke.py_files()
+               if rel.startswith("_raw/")]
+        self.assertEqual(bad, [], "時計の見張りが _raw まで歩いている")
+
+    def test_評価の語の見張りが金庫まで歩かない(self):
+        import check_copy
+        bad = [rel for rel, _ in check_copy.walk(HERE)
+               if rel.startswith("_raw/")]
+        self.assertEqual(bad, [], "評価の語の見張りが _raw まで歩いている")
+
+    def test_置いたものは本当に引っかかる形になっている(self):
+        """**この試験そのものが、何も置けていないと意味がない。**
+
+        置いたファイルが見張りに引っかからないものだったら、
+        上の2本は「歩いていない」ではなく「見るものが無い」で通る。
+        """
+        with io.open(os.path.join(self.raw, "common", "jst.py"),
+                     encoding="utf-8") as f:
+            self.assertIn("datetime", f.read())
+        import check_copy
+        with io.open(os.path.join(self.raw, "README.md"),
+                     encoding="utf-8") as f:
+            文 = f.read()
+        self.assertTrue(any(w in 文 for w in check_copy.NG),
+                        "置いた文に評価の語が無い。試験が空回りする")
 
 
 if __name__ == "__main__":

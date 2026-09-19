@@ -47,10 +47,16 @@ CLOCK = re.compile(r"datetime\.now|date\.today|time\.time\(|utcnow")
 ONLY = "common/jst.py"
 
 
+# **公開用で走るとき、金庫が `_raw/` に出ている**（正本 9節）。
+# 中身は同じファイルなので、歩くと**金庫側の `common/jst.py` まで拾う。**
+# そこは `rel == "common/jst.py"` に当たらないので、除外が効かない。
+# 2026-09-19、公開用の1回目がここで落ちた。**取りに行く前に落ちたのは正しい。**
+SKIP_DIRS = (".git", "__pycache__", "data", "inbox", "_raw")
+
+
 def py_files():
     for cur, dirs, files in os.walk(ROOT):
-        dirs[:] = [d for d in dirs
-                   if d not in (".git", "__pycache__", "data", "inbox")]
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
         for name in sorted(files):
             if not name.endswith(".py"):
                 continue
