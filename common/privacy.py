@@ -437,14 +437,30 @@ def suppress_rate(count, population):
     すぐ上の「0件はいちばん薄い階級の色」と食い違う
     （街頭窃盗統計が実物で見つけ、2026-09-17 に正本が直った）。
 
-    人口の条件は0件でも効く。人口500人未満なら、率そのものが跳ねる。
+    **人口の小ささも、0件には効かない**（2026-09-19 に直した）。
+    前はここに「人口500人未満なら率そのものが跳ねる」と書いて、
+    人口を先に見ていた。だから `suppress_rate(0, 400)` が True になり、
+    **0件なのに率を伏せていた。**
+
+        9件 ÷ 400人 の率に 400 を掛ければ 9件が戻る
+        0件 は、何を掛けても 0
+
+    戻る先が無いものを伏せても、守っているものは無い。
+    守っていないのに、**本当に0件の升が率の地図で灰色に落ちる。**
+    「0件はいちばん薄い階級の色」と食い違う。
+    件数の側で一度直した不具合が、人口の小さい升だけでもう一度起きていた。
+
+    **条件を2つ並べるときは、どちらを先に見るかも決める**（正本 3.2）。
+    ここは **0件を先に見る**。
     """
     try:
         count = int(count)
         population = int(population)
     except (TypeError, ValueError):
         return True
-    return population < MIN_POPULATION or 0 < count <= RATE_SMALL
+    if count == 0:
+        return False                      # **先に見る。** 戻る先が無い
+    return population < MIN_POPULATION or count <= RATE_SMALL
 
 
 def bucket_count(n):

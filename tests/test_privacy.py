@@ -166,8 +166,13 @@ class 小さい母数(unittest.TestCase):
         食い違う。
         """
         self.assertFalse(privacy.suppress_rate(0, 10000))
-        # 人口の条件は0件でも効く
-        self.assertTrue(privacy.suppress_rate(0, 400))
+        # **人口の小ささも0件には効かない**（2026-09-19 に直した）。
+        # 前はここが assertTrue で、**違反のほうを期待値に固定していた。**
+        # docstring は「0件は戻るものが無い」と正しく書いてあったのに、
+        # すぐ次の行がその逆を固定していた。実装と検査が同じ向きに
+        # ずれていると、全部通ったまま何年でも残る
+        self.assertFalse(privacy.suppress_rate(0, 400))
+        self.assertFalse(privacy.suppress_rate(0, 1))
 
 
 class 公開ファイルの見張り(unittest.TestCase):
@@ -431,8 +436,10 @@ class 正本5節の署名(unittest.TestCase):
         self.assertTrue(privacy.suppress_rate(1, 1000))
         self.assertTrue(privacy.suppress_rate(2, 1000))
         self.assertFalse(privacy.suppress_rate(3, 1000))
-        # 人口の条件は0件でも効く（率そのものが跳ねる）
-        self.assertTrue(privacy.suppress_rate(0, 499))
+        # **人口が小さくても、0件は伏せない。** 戻る先が無い
+        self.assertFalse(privacy.suppress_rate(0, 499))
+        # 人口の条件は、件数が1件以上のときだけ効く
+        self.assertTrue(privacy.suppress_rate(9, 499))
 
     def test_当事者の列名を4サイトぶん持っている(self):
         """**落とすと地番が出る側**なので、2サイト目を待たずに足す。"""
