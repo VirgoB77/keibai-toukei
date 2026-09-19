@@ -899,5 +899,80 @@ class 空の鍵で升を作らない(unittest.TestCase):
                             "市区町村コードの形が違う（%r）" % code)
 
 
+class 出した欄が空になっていないか(unittest.TestCase):
+    """**同じ欄を見ていても、向きが逆だと捕まらない**（2026-09-19）。
+
+    `city_code` は「ある値が入っているか」の検査がいくつもあったのに、
+    「空のものが出ていないか」を見るものが1本も無かった。
+
+    そこで**全部の欄を1つずつ空にして走らせた。** 3つ黙った。
+
+        site       **横断ハブの結び目。** 空だとどのサイトの升か分からない
+        site_name  人が読む名前
+        city       人が読む市区町村名。コードは合っていても読めない
+
+    `city_code` `kind` `period` `count` `count_label` `generated_at`
+    `observed` は鳴った。
+
+    **空でよい欄には理由を書く。理由が書けないなら、空にしてはいけない。**
+    """
+
+    # 空でよい欄と、その理由。**ここに無いものは空にしてはいけない**
+    空でよい = {
+        "records": "**個票は出さない**（正本 1節）。空が正しい姿",
+        "count": "1〜2件は伏せる（正本 3.2）。`count_label` が '1-2' を持つ",
+    }
+
+    def 行(self, i):
+        return {"system": "keibai", "pref": "大阪府", "city": "茨木市",
+                "kind": "土地", "first_seen": "2026-09-17",
+                "seen": ["2026-09-17"], "open_date": "2026-11-05",
+                "status": "", "property_key": "x:%d:1" % i,
+                "key": "x:%d:1:o" % i, "saishutsu": False}
+
+    def 空か(self, v):
+        return v is None or v == "" or v == {} or v == []
+
+    def test_上の階層に空の欄がない(self):
+        out = make_index.build([self.行(i) for i in range(4)])
+        for k, v in out.items():
+            if k.startswith("_") or k in self.空でよい:
+                continue
+            self.assertFalse(self.空か(v), "%s が空で出ている" % k)
+
+    def test_升の欄に空がない(self):
+        out = make_index.build([self.行(i) for i in range(4)])
+        for c in out["counts_by_city"]:
+            for k, v in c.items():
+                if k in self.空でよい:
+                    continue
+                self.assertFalse(self.空か(v),
+                                 "升の %s が空で出ている（%s）" % (k, c))
+
+    def test_空でよい欄には理由が書いてある(self):
+        for k, なぜ in self.空でよい.items():
+            self.assertTrue(なぜ, "%s を空にしてよい理由が書いていない" % k)
+
+    def test_配っているものにも空の欄がない(self):
+        """**仕掛けではなく実物を見る**（③）。"""
+        path = os.path.join(ROOT, "data", "public", "index.json")
+        if not os.path.exists(path):
+            path = os.path.join(ROOT, "data", "index.json")
+        if not os.path.exists(path):
+            self.skipTest("配るファイルがここには無い")
+        with open(path, encoding="utf-8") as f:
+            d = json.load(f)
+        for k, v in d.items():
+            if k in self.空でよい:
+                continue
+            self.assertFalse(self.空か(v), "配っている %s が空" % k)
+        for c in d["counts_by_city"]:
+            for k, v in c.items():
+                if k in self.空でよい:
+                    continue
+                self.assertFalse(self.空か(v),
+                                 "配っている升の %s が空" % k)
+
+
 if __name__ == "__main__":
     unittest.main()
