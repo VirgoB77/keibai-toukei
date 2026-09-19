@@ -64,7 +64,7 @@ PREFIX = os.environ.get("SITE_PREFIX") or site.id_prefix()
 SITE_NAME = os.environ.get("SITE_NAME", "競売統計")
 # **退役した置き場のURLを書き置かない**（正本 9節）。公開先が決まるまでは空。
 # 空なら個票のURLを出さない（いま records は0本なので空で困らない）
-BASE_URL = os.environ.get("SITE_URL") or site.SITE.get("site_url") or ""
+BASE_URL = site.base_url()   # 末尾の `/` は site.py がそろえる
 
 ROWS_DIR = os.path.join(HERE, "data", "rows")
 OUT_PATH = os.path.join(HERE, "data", "public", "index.json")

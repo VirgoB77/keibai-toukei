@@ -73,7 +73,7 @@ from common.addr import normalize  # noqa: E402
 # site には**このサイトの名前**を入れる（正本 6節）。公開先の置き場の名前ではない
 SITE = os.environ.get("SITE") or site.SITE["site_id"]
 PREFIX = os.environ.get("SITE_PREFIX") or site.id_prefix()
-BASE_URL = os.environ.get("SITE_URL") or site.SITE.get("site_url") or ""
+BASE_URL = site.base_url()   # 末尾の `/` は site.py がそろえる
 OUT_PATH = os.path.join(HERE, "data", "cross", "atochi.json")
 ROWS_DIR = os.path.join(HERE, "data", "rows")
 

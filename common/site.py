@@ -95,6 +95,30 @@ def id_prefix():
     return SITE.get("id_prefix") or SITE.get("site_id") or ""
 
 
+def base_url():
+    """公開したサイトの入口。**末尾は必ず `/` にそろえて返す。**
+
+    呼ぶ側は `base_url() + "keibai/xxx.html"` のように、そのままつなぐ。
+
+    **つなぎ方を呼ぶ側に任せない。** site.json に `/` を付け忘れて
+    `https://keibai-toukei.com` と入れると、つないだ先はこうなる:
+
+        https://keibai-toukei.comkeibai/xxx.html
+
+    **形としては正しいURLなので、検査を通って押せてしまう。**
+    気づくのは、誰かが踏んで404になったとき。
+    site_url を入れる日は⑤の直後で、いちばん急いでいる日になる。
+    **その日に気づける形を、入れる前に置いておく。**
+
+    配信がまだ無いあいだは空文字を返す（正本 3.4「404を入れない」）。
+    空文字のときは、つないだ先が `keibai/xxx.html`（相対）になる。
+    """
+    u = (os.environ.get("SITE_URL") or SITE.get("site_url") or "").strip()
+    if not u:
+        return ""
+    return u.rstrip("/") + "/"
+
+
 def user_agent():
     """名乗り。about ページがあるときだけ、そのURLを入れる。
 

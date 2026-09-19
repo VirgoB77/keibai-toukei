@@ -112,6 +112,98 @@ class 名乗りは据え置き(unittest.TestCase):
             "名乗りが2つある状態になるので、common/site.json から消すこと")
 
 
+class 入口のURL(unittest.TestCase):
+    """**site_url を入れる日に、いちばん急いでいる。だから今のうちに置く。**
+
+    `BASE_URL` は `"%s%s/%s.html" % (BASE_URL, system, key)` でつなぐ。
+    末尾の `/` を付け忘れると、つないだ先がこうなる:
+
+        https://keibai-toukei.comkeibai/xxx.html
+
+    **形としては正しいURLなので、検査を通って押せてしまう。**
+    気づくのは、誰かが踏んで404になったとき。
+
+    いまは site_url が空なので、ここは1本も効いていないように見える。
+    そうではない。**空のときの戻り値（相対URL）も、ここで縛っている。**
+    """
+
+    def 入れてみる(self, 値):
+        import common.site as m
+        keep = dict(m.SITE)
+        keepenv = os.environ.pop("SITE_URL", None)
+        try:
+            m.SITE["site_url"] = 値
+            return m.base_url()
+        finally:
+            m.SITE.clear()
+            m.SITE.update(keep)
+            if keepenv is not None:
+                os.environ["SITE_URL"] = keepenv
+
+    def test_末尾のスラッシュをそろえる(self):
+        for 入れた in ("https://keibai-toukei.com",
+                       "https://keibai-toukei.com/",
+                       "https://keibai-toukei.com//",
+                       "  https://keibai-toukei.com  "):
+            self.assertEqual(self.入れてみる(入れた),
+                             "https://keibai-toukei.com/", 入れた)
+
+    def test_ドメインと次の語がくっつかない(self):
+        """**これが本番のつなぎ方そのもの**（make_index.py・make_cross.py）。"""
+        base = self.入れてみる("https://keibai-toukei.com")
+        self.assertEqual("%s%s/%s.html" % (base, "keibai", "x"),
+                         "https://keibai-toukei.com/keibai/x.html")
+
+    def test_もとから付いていても二重にならない(self):
+        base = self.入れてみる("https://keibai-toukei.com/")
+        self.assertEqual("%s%s/%s.html" % (base, "keibai", "x"),
+                         "https://keibai-toukei.com/keibai/x.html")
+
+    def test_空のときは相対のまま(self):
+        """配信がまだ無い日に、絶対URLを名乗らない（正本 3.4「404を入れない」）。"""
+        self.assertEqual(self.入れてみる(""), "")
+        self.assertEqual("%s%s/%s.html" % (self.入れてみる(""), "keibai", "x"),
+                         "keibai/x.html")
+
+    def test_いま本番のBASE_URLは空(self):
+        """**site_url を入れた日に、ここも一緒に見直す。**"""
+        import make_index
+        self.assertEqual(make_index.BASE_URL, "")
+
+    def test_入れるならhttps(self):
+        u = raw().get("site_url", "")
+        if not u:
+            self.skipTest("site_url はまだ空。入れた日から効く")
+        self.assertTrue(u.startswith("https://"), u)
+
+    def test_配信しているドメインと食い違わない(self):
+        """**CNAME は GitHub が公開側に書いたもの。そこが唯一の実物。**
+
+        公開用の clone と公開用の Actions にはこれがある。金庫には無い
+        （`make_public_tree.py` は CNAME を木に入れない。入れると
+        GitHub が書き戻したものを消す差分になってドメインが外れる）。
+
+        だから**金庫では skip、公開用では走る**。走る場所が違う検査で、
+        木を見るだけでは捕まらないものを捕まえる。
+
+        www と本体の取り違えがここで鳴る。GitHub が主張しているのは
+        CNAME に書いてあるほう1つだけで、もう片方は 301 で飛ばされる。
+        飛ばされる側を site_url にすると、index.json に入るURLが全部
+        リダイレクトになり、配信の確認（curl は -L を付けていない）も落ちる。
+        """
+        u = raw().get("site_url", "")
+        if not u:
+            self.skipTest("site_url はまだ空。入れた日から効く")
+        path = os.path.join(ROOT, "CNAME")
+        if not os.path.exists(path):
+            self.skipTest("CNAME が無い（金庫。公開用の clone では走る）")
+        with open(path, encoding="utf-8") as f:
+            名乗り = f.read().strip()
+        host = u.split("//", 1)[-1].split("/", 1)[0]
+        self.assertEqual(host, 名乗り,
+                         "site_url のホストと、GitHub が配信しているドメインが違う")
+
+
 class 退役した名前(unittest.TestCase):
     """**退役した名前の一覧と比べる。現在値と比べない**（正本 9節）。
 
