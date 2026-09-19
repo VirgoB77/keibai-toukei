@@ -118,3 +118,7 @@ class 書き出す側が2人いる(unittest.TestCase):
     def test_まっさらなファイルの先頭に区切りを置かない(self):
         report.put_chapter(self.p, "章", "中身")
         self.assertFalse(self.read().lstrip().startswith("---"))
+
+
+if __name__ == "__main__":
+    unittest.main()

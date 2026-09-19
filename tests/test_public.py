@@ -22,6 +22,7 @@
 """
 
 import glob
+import io
 import json
 import os
 import sys
@@ -331,6 +332,26 @@ class 引き算(unittest.TestCase):
         for name in ("total", "合計", "counts_total"):
             self.assertNotIn(name, index,
                              "index.json に合計の欄「%s」がある" % name)
+
+
+class 実数はどのファイルにも残さない(unittest.TestCase):
+    """`_n` は伏せた升の**真の件数**。1本でも漏れると伏せた意味が消える。
+
+    `aggregate.py` の中で落としているが、**落とす場所は1か所しかない。**
+    新しい出力を足した人がそこを通さなければ、そのまま出る。
+    だから置き場ではなく、**出来上がったファイル全部**を見る
+    （正本 9節「検査は最初の1件で止まらない形にする」）。
+    """
+
+    def test_dataの下のjsonに実数が入っていない(self):
+        kinko.need(self)
+        bad = []
+        for path in sorted(glob.glob(os.path.join(HERE, "data", "**", "*.json"),
+                                     recursive=True)):
+            with io.open(path, encoding="utf-8") as f:
+                if '"_n"' in f.read():
+                    bad.append(os.path.relpath(path, HERE))
+        self.assertEqual(bad, [], "伏せた升の実数が残っているファイル")
 
 
 if __name__ == "__main__":

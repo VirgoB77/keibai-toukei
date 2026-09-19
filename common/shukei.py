@@ -15,11 +15,32 @@
 どんな親子があるかはサイトごとに違う（競売なら 公告／結果、
 街頭窃盗なら手口）ので、そちらは各サイトが登録する。
 
-    FAMILIES = Families(("結果", "結果-落札", "結果-不調"),
+    FAMILIES = Families(("結果", "落札", "不調"),
                         ("公告", "公告-新規", "公告-再公告"))
 
 **規則を文章で書くと忘れられる。登録表にすると、書き忘れをテストが拾える。**
 内訳を足すのに登録を忘れると undeclared() が拾う。
+
+## 子の名前は2通りある（2026-09-19）
+
+正本が結果の語を **落札／不調** に決めた。あわせて
+
+    種別には段階も結果も入る
+    段階なら 競売/公告、結果なら 競売/落札・競売/不調
+    **段階と結果を1つの升に混ぜない**
+    種別の中をさらに分けるときは - でつなぐ（競売/公告-新規）
+
+前は `結果-落札` と書いていた。これは段階（結果）と結果（落札）を
+1つの升に混ぜた形なので、`落札` にした。
+
+つまり子は2通りある。
+
+    公告-新規   親の内訳。**親-… の形**
+    落札        親が取りうる値。**親の接頭辞を持たない**
+
+だから「子は 親-… で始まること」という検査はもう掛けられない。
+**代わりに数で見る**（check_sums）。子の升を足して親にならなければ、
+登録が間違っているか、升が落ちている。
 
 Python 3 の標準ライブラリだけで動く。
 """
@@ -38,13 +59,30 @@ class Families:
 
     def __init__(self, *families):
         for f in families:
-            if len(f) < 2:
-                raise ValueError("まとまりは親と子が要る: %r" % (f,))
-            if self.SEP in f[0]:
-                raise ValueError("親に「%s」は入らない: %r" % (self.SEP, f[0]))
-            for kid in f[1:]:
-                if not kid.startswith(f[0] + self.SEP):
-                    raise ValueError("子は「親-…」の形にする: %r" % (kid,))
+            # **合計の升は2つ以上の内訳に分かれる。**
+            # 子が1つなら、それは親子ではなく同じ数を2度書いているだけ。
+            # 前は「子は 親-… の形」で 土地／戸建て のような並びを弾いていた。
+            # 子が接頭辞を持たなくなった（落札・不調）ので、その検査は
+            # 掛けられない。**数（子の数と、check_sums の合計）で見る。**
+            if len(f) < 3:
+                raise ValueError(
+                    "合計の升は2つ以上の内訳に分かれる。"
+                    "内訳が1つなら、それは親子ではなく同じ数: %r" % (f,))
+            parent = f[0]
+            if self.SEP in parent:
+                raise ValueError("親に「%s」は入らない: %r" % (self.SEP, parent))
+            kids = f[1:]
+            if len(set(kids)) != len(kids):
+                raise ValueError("子が重なっている: %r" % (f,))
+            for kid in kids:
+                if kid == parent:
+                    raise ValueError("子と親が同じ: %r" % (kid,))
+                # **内訳の形をしているなら、親の内訳でなければならない。**
+                # 「公告-新規」を結果のまとまりに登録する書き間違いを拾う
+                if self.SEP in kid and not kid.startswith(parent + self.SEP):
+                    raise ValueError(
+                        "「%s」を含む子は「親-…」の形にする: %r"
+                        % (self.SEP, kid))
         self.families = tuple(tuple(f) for f in families)
         self.parents = tuple(f[0] for f in self.families)
         self.children = tuple(k for f in self.families for k in f[1:])
@@ -88,6 +126,35 @@ class Families:
     def is_parent(self, stage):
         """出してはいけない合計の升か（決まり1）。"""
         return stage in self.parents
+
+    def check_sums(self, totals):
+        """**子の升を足すと親になるか**（正本「足したときに数が合うこと」）。
+
+        `totals` は段階 → **真の件数**（ぼかす前）。
+        親が `totals` に無いまとまりは飛ばす（そのまとまりが出ていない升）。
+
+        **これが、接頭辞の検査の代わり。**
+        子が親の接頭辞を持たなくなったので、名前の形では登録の間違いを
+        拾えない。`("土地", "戸建て", "マンション")` のような
+        「親子ではない並び」を登録してしまっても、名前は通ってしまう。
+        数は通らない。土地の件数は 戸建て＋マンション にならない。
+
+        合わないものを辞書の並びで返す。空なら合っている。
+        """
+        bad = []
+        for f in self.families:
+            if f[0] not in totals:
+                continue
+            missing = [k for k in f[1:] if k not in totals]
+            if missing:
+                bad.append({"親": f[0], "親の数": totals[f[0]],
+                            "子の合計": None, "欠けている子": missing})
+                continue
+            got = sum(totals[k] for k in f[1:])
+            if got != totals[f[0]]:
+                bad.append({"親": f[0], "親の数": totals[f[0]],
+                            "子の合計": got, "欠けている子": []})
+        return bad
 
     def missing_siblings(self, stages):
         """まとまりのうち1つでも出ていて、兄弟が欠けているもの。

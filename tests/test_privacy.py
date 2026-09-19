@@ -370,10 +370,6 @@ class 個人に化けてはいけないもの(unittest.TestCase):
                          "三井住友ファイナンス")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class 正本5節の署名(unittest.TestCase):
     """**呼んでいなくても、署名があるものは置いてそろえる**（正本 5節）。
 
@@ -495,3 +491,7 @@ class 正本5節_residential_reason(unittest.TestCase):
         row2 = {"kind": "土地", "zoning": "第一種低層住居専用地域",
                 "address": "○○市○○町1番1"}
         self.assertEqual(privacy.lived_in_reason(row2), "住居系の用途地域")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -86,10 +86,10 @@ SOLD = ("売却", "落札", "売却済", "契約済")
 #   公告      … その月に公告された**回**の数（新規＋再公告）。市場の厚み
 #   公告-新規 … そのうち、その物件が初めて公告された回だけ。新しく出た担保
 #   結果      … その月に開札された回の数（落札＋不調）。落札率の分母
-#   結果-落札 … そのうち売れた回。落札率の分子
-#   結果-不調 … そのうち売れなかった回
+#   落札      … そのうち売れた回。落札率の分子
+#   不調      … そのうち売れなかった回
 #
-# **結果と結果-落札を分けるのが大事。** 「売れた件数」をレコード数で数えると、
+# **結果と落札を分けるのが大事。** 「売れた件数」をレコード数で数えると、
 # 不調まで混ざって水増しになる。姉妹サイトの実測では、兵庫県の県有地売払いで
 # 82回中61回（74%）が不調だった。分けていないと4倍近く多く見える。
 #
@@ -100,12 +100,25 @@ SOLD = ("売却", "落札", "売却済", "契約済")
 # **新規と合計を分けるのが大事。** 混ぜると、不売が続く不況期に
 # 件数が勝手に増えて、逆の読み方になる。これがいちばんこわい間違い。
 # 段階の言い方は姉妹サイト共通で **予定／公告／結果** の3つ。
-# その中の内訳は「-」でつなぐ（公告-新規、結果-落札、結果-不調）。
+# その中の内訳は「-」でつなぐ（公告-新規、公告-再公告）。
+#
+# **結果の語は 落札／不調 の2つだけ**（正本 6節・2026-09-19）。
+# 「売却」「不売」「売却済み」とは書かない。法令に近く、いちばん多く
+# 使われていた語に4サイトでそろえた。
+#
+#     種別には段階も結果も入る
+#     段階なら 競売/公告、結果なら **競売/落札・競売/不調**
+#     **段階と結果を1つの升に混ぜない**
+#     種別の中をさらに分けるときは - でつなぐ（競売/公告-新規）
+#
+# 前は `結果-落札` と書いていた。**これが「混ぜた」形。**
+# 段階（結果）と結果（落札）が1つの升に入っていた。
+# いまは 結果 が親、落札／不調 が子。子は親の接頭辞を持たない。
 KOKOKU, KOKOKU_NEW = "公告", "公告-新規"
 KOKOKU_RE = "公告-再公告"   # 2回目以降の公告。新規と足すと公告になる
-KEKKA = "結果"              # その月に開札された回（落札＋不調）
-KEKKA_OCHI = "結果-落札"     # そのうち売れた回
-KEKKA_FUCHO = "結果-不調"    # そのうち売れなかった回
+KEKKA = "結果"              # その月に開札された回（落札＋不調）。**親。出さない**
+OCHI = "落札"               # そのうち売れた回
+FUCHO = "不調"              # そのうち売れなかった回
 # **取下げは段階にしない**（正本 9節・2026-09-19 に訂正が来た）。
 #
 #     段階は値ではなく位置なので、鍵に入れてよい
@@ -171,9 +184,9 @@ def stage_of(row):
     """その1件（回）が、いまどの段階か。index.json の kind に使う。"""
     status = row.get("status") or ""
     if status in SOLD:
-        return KEKKA_OCHI
+        return OCHI
     if status in UNSOLD:
-        return KEKKA_FUCHO
+        return FUCHO
     return KOKOKU
 
 
@@ -211,10 +224,10 @@ def events(row):
     ym2 = month_result(row)
     if ym2 and status in SOLD:
         out.append((KEKKA, ym2))
-        out.append((KEKKA_OCHI, ym2))
+        out.append((OCHI, ym2))
     elif ym2 and status in UNSOLD:
         out.append((KEKKA, ym2))
-        out.append((KEKKA_FUCHO, ym2))
+        out.append((FUCHO, ym2))
     # **取下げの升は作らない。** 置き場が正本で決まっていない（上の説明）。
     # 結果の升にも入れない（結果は「その月に開札された回」で、取下げには
     # 入札が無い。落札率の分母に入れると分母が水増しになる）。
@@ -300,6 +313,172 @@ def unresolved(row, today=None):
     return not (status in SOLD or status in UNSOLD or status in WITHDRAWN)
 
 
+# ---------------------------------------------------------------- 数が合うこと
+# **足したときに数が合うこと**（正本 3.2・2026-09-19）。
+#
+#     升の合計 ＋ not_counted の3つ ＝ 見た行の数
+#     合わなければ、黙って落としている
+#
+# **この形のままでは、このサイトでは閉じない。** 実データで確かめた（106行）。
+# 1つの行が2つ以上の升に入るため（9月に公告されて10月に売れた回は、
+# 9月の公告と10月の落札の両方に1ずつ入る）。さらに、取下げになった行は
+# **公告の升にも入ったまま**でなければならない。公告から外すと母集団が痩せ、
+# 取下げ率の分母が消える（正本 3.5「母集団の保存が先」）。
+#
+#     実測 2026-09-19   公告-新規 106 ＋ not_counted 1 ＝ 107 ≠ 106
+#
+# 取下げの1行が、公告-新規にも not_counted.undecided にも入っている。
+# **どちらも正しい。** 9月に公告されたのは事実で、取下げで消えたのも事実。
+#
+# そこでこちらは、正本の1つの等式を**2つに分けて**確かめる。
+# 食い違いとして正本に報告ずみ（docs/seihon-toiawase.md #11）。
+#
+#   ① 行方の保存（在庫）… 1行は必ず1つの行方に入る。足すと見た行の数
+#   ② 内訳の保存（流量）… 子の升を足すと親の升になる（公告・結果）
+#
+# ①が「黙って落としていないか」、②が「登録表が正しいか」を見る。
+
+# 行方。**上から当たった1つで決まる。順番に意味がある。**
+#
+#   落札・不調  結果が出た。**いちばん強い**（開札まで行った）
+#   取下げ      手続きが止まった（index.json の not_counted.undecided）
+#   消えた      一覧から消えた。取下げか繰り越しか未確定（同 gone）
+#   読めない    開札日が過ぎたのに結果が読めない（同 unresolved）
+#   待ち        まだ開札を迎えていない。**落ちているのではない**
+#
+# **「待ち」は正本の3つに無い、4つめ。** 実データでは106行のうち105行が
+# ここに入る。これを数えないと①が閉じない。index.json には出していない
+# （欄の名前は正本6節が決める。勝手に足さない。正本 11節）。
+YUKUE = ("落札", "不調", "取下げ", "消えた", "読めない", "待ち")
+
+# index.json の not_counted の欄に対応する行方（正本 6節で名前が決まった3つ）
+YUKUE_KEY = {"取下げ": "undecided", "消えた": "gone", "読めない": "unresolved"}
+
+
+def yukue(row, today=None):
+    """その行が、いまどこにいるか。**1行は必ず1つだけ。**
+
+    `YUKUE` の順に見て、最初に当たったもので決まる。
+    足すと必ず見た行の数になる（そうでなければ黙って落としている）。
+    """
+    status = row.get("status") or ""
+    if status in SOLD:
+        return OCHI
+    if status in UNSOLD:
+        return FUCHO
+    if undecided(row):
+        return "取下げ"
+    if gone(row):
+        return "消えた"
+    if unresolved(row, today):
+        return "読めない"
+    return "待ち"
+
+
+def yukue_conflicts(row):
+    """行方の合図が2つ以上立っている行。**黙って上から1つ選ばない。**
+
+    たとえば status が「取下げ」なのに `gone_on` も立っている行。
+    どちらか片方が間違っているか、順番の決め方が実物と合っていない。
+    `yukue()` は順番で1つに決めるが、**決めたことが見えないと直せない**。
+    """
+    on = []
+    status = row.get("status") or ""
+    if status in SOLD:
+        on.append(OCHI)
+    if status in UNSOLD:
+        on.append(FUCHO)
+    if status in WITHDRAWN:
+        on.append("取下げ")
+    if gone(row):
+        on.append("消えた")
+    return on if len(on) > 1 else []
+
+
+def kazu_ga_au(rows, cells=None, today=None):
+    """**足したときに数が合うか。** 合わない中身を返す。
+
+    `cells` を渡すと②（内訳の保存）も見る。渡さなければ①だけ。
+    戻すのは辞書。`食い違い` が空なら合っている。
+
+    **最初の1件で止まらない**（正本 9節）。全部見てから返す。
+    """
+    yuk = {}
+    for r in rows:
+        y = yukue(r, today)
+        yuk[y] = yuk.get(y, 0) + 1
+    bad = []
+    total = sum(yuk.values())
+    if total != len(rows):
+        bad.append("行方の合計 %d が、見た行の数 %d と合わない"
+                   % (total, len(rows)))
+
+    kasanari = [r for r in rows if yukue_conflicts(r)]
+
+    uchiwake = []
+    if cells is not None:
+        # 段階ごとの**真の件数**を足す。ぼかした count ではない
+        totals = {}
+        for c in cells:
+            n = c.get("_n")
+            if n is None:
+                continue
+            totals[c["stage"]] = totals.get(c["stage"], 0) + n
+        uchiwake = FAMILIES.check_sums(totals)
+        for d in uchiwake:
+            if d["欠けている子"]:
+                bad.append("%s の子が欠けている: %s"
+                           % (d["親"], "・".join(d["欠けている子"])))
+            else:
+                bad.append("%s の升 %d と、子の合計 %d が合わない"
+                           % (d["親"], d["親の数"], d["子の合計"]))
+    return {
+        "見た行": len(rows),
+        "行方": yuk,
+        "重なり": len(kasanari),
+        "内訳": uchiwake,
+        "食い違い": bad,
+    }
+
+
+def write_kazu(rows, cells=None, today=None):
+    """数が合うかを `data/parse-unknown.md` の章に書く。合わなければ落とす。
+
+    **黙って通さない。** 合わない日は index.json を作らずに止める。
+    生データは workflow の `if: always()` で保存ずみなので、
+    止めても取り直せないものは失われない（正本 9節）。
+    """
+    d = kazu_ga_au(rows, cells, today)
+    body = [
+        "**1行は必ず1つの行方に入る。足すと見た行の数になる。**",
+        "正本の「升の合計 ＋ not_counted ＝ 見た行の数」は、"
+        "1行が2つ以上の升に入るこのサイトでは閉じない。"
+        "行方（在庫）と内訳（流量）に分けて見ている"
+        "（docs/seihon-toiawase.md #11）。",
+        "",
+        "| 行方 | 件数 | index.json の欄 |",
+        "| --- | ---: | --- |",
+    ]
+    for y in YUKUE:
+        body.append("| %s | %d | %s |"
+                    % (y, d["行方"].get(y, 0), YUKUE_KEY.get(y, "（出していない）")))
+    body.append("| **合計** | **%d** | 見た行 %d |"
+                % (sum(d["行方"].values()), d["見た行"]))
+    if d["重なり"]:
+        body += ["", "**行方の合図が2つ以上立っている行が %d 件ある。**"
+                     "順番で1つに決めているが、決め方が実物と合っていない"
+                     "おそれがある。" % d["重なり"]]
+    if d["食い違い"]:
+        body += ["", "**合っていない。**"] + ["- " + b for b in d["食い違い"]]
+    report.put_chapter(UNKNOWN_PATH, "数が合うこと", "\n".join(body))
+    if d["食い違い"]:
+        raise RuntimeError(
+            "数が合わない。黙って落としている。\n  "
+            + "\n  ".join(d["食い違い"])
+            + "\n詳しくは data/parse-unknown.md の「数が合うこと」")
+    return d
+
+
 def bucket_key(row, stage, ym):
     """升の鍵。市区町村より細かいものは入れない（ガード1）。
 
@@ -335,11 +514,11 @@ def bucket_key(row, stage, ym):
 INDEX_FIELDS = tuple(f for f in BUCKET_FIELDS if f != "kind")
 
 
-# 結果の升は、子を足すと親になる（結果 ＝ 結果-落札 ＋ 結果-不調）。
+# 結果の升は、子を足すと親になる（結果 ＝ 落札 ＋ 不調）。
 # この関係があると引き算で伏せた升が戻るので、正本 3.2 の手当てが要る。
 # 公告は「公告 ＝ 公告-新規 ＋ 再公告」だが再公告の升を出していないので、
 # 引き算しても何も決まらない。まとまりとして扱わない。
-RESULT_FAMILY = (KEKKA, KEKKA_OCHI, KEKKA_FUCHO)
+RESULT_FAMILY = (KEKKA, OCHI, FUCHO)
 
 # 公告も同じ形。公告 ＝ 公告-新規 ＋ 公告-再公告。
 # 前は再公告の升を出していなかったが、**出さなくても引き算はできる。**
@@ -378,7 +557,7 @@ def aggregate(rows, fields=BUCKET_FIELDS, with_raw=False):
             b["n"] += 1
             if isinstance(row.get("base_price"), (int, float)):
                 b["base"].append(row["base_price"])
-            if stage != KEKKA_OCHI:
+            if stage != OCHI:
                 continue
             # 落札の値段と倍率は、売れた升にだけ入れる
             if isinstance(row.get("sale_price"), (int, float)):
@@ -542,7 +721,20 @@ def write_unresolved(rows):
 
 def main():
     rows = load_rows()
-    cells = aggregate(rows)
+    cells = aggregate(rows, with_raw=True)
+
+    # **数が合うかを、書き出す前に確かめる**（正本 3.2・2026-09-19）。
+    # 合わない日は monthly.json を書かずに止める。
+    # 集計は毎回作り直せるので、書かずに止めても取り直せないものは失われない。
+    # 生データは workflow の `if: always()` で保存ずみ（正本 9節）。
+    kazu = write_kazu(rows, cells)
+    print("行方: " + "／".join("%s %d" % (y, kazu["行方"].get(y, 0))
+                              for y in YUKUE if kazu["行方"].get(y)))
+
+    # **実数は出力に残さない**（with_raw は引き算の手当てと検査のためだけ）
+    for c in cells:
+        c.pop("_n", None)
+
     # **親（合計）の升は出さない**（正本 3.2）。
     # 公告 = 公告-新規 + 公告-再公告 なので、親を並べると
     # 「公告6 − 公告-新規5 = 再公告1」と、伏せた升が引き算で戻る。
@@ -553,10 +745,12 @@ def main():
         "generated_at": today_str(),
         "公開しない": NOT_PUBLIC,
         "粒度": "市区町村 × 種別 × 段階 × 月。これより細かくしない",
-        "段階": "予定／公告／結果 の3つ。内訳は「-」でつなぐ。"
+        "段階": "予定／公告／結果 の3つ。段階の内訳は「-」でつなぐ。"
               "公告＝その月に公告された回（新規＋再公告）、公告-新規＝初めての回、"
-              "結果＝開札された回（落札率の分母）、結果-落札＝そのうち売れた回、"
-              "結果-不調＝売れなかった回。混ぜない",
+              "結果＝開札された回（落札率の分母）。"
+              "**結果の語は 落札／不調 の2つだけ**（正本 6節）。"
+              "落札＝そのうち売れた回、不調＝売れなかった回。"
+              "段階と結果を1つの升に混ぜない",
         "件数": "count は機械が読む（null は1か2）。count_label は人に見せる",
         "件数のぼかし": "1〜2件の升は実数を出さず \"1-2\" と書く",
         "中央値": "元になる件数が3未満のときは null",

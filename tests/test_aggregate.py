@@ -8,6 +8,7 @@
     python3 -m unittest discover -s tests
 """
 
+import io
 import os
 import sys
 import unittest
@@ -97,8 +98,8 @@ class ガード3_1件2件はぼかす(unittest.TestCase):
         cells = aggregate.aggregate([行(status="売却"), 行(status="売却"),
                                      行(status="売却")])
         n = {c["stage"]: (c["count"], c["count_label"]) for c in cells}
-        self.assertEqual(n["結果-落札"], (3, "3"))
-        self.assertEqual(n["結果-不調"], (0, "0"))   # 不売は1件も無かった
+        self.assertEqual(n["落札"], (3, "3"))
+        self.assertEqual(n["不調"], (0, "0"))   # 不売は1件も無かった
 
     def test_まとまりが出ていなければ兄弟も足さない(self):
         # 公告日が分からない行は公告の升に入らない。
@@ -108,7 +109,7 @@ class ガード3_1件2件はぼかす(unittest.TestCase):
 
     def test_小さい升は実数を出さず_ラベルで見せる(self):
         cells = aggregate.aggregate([行(status="不売")])
-        fubai = [c for c in cells if c["stage"] == "結果-不調"][0]
+        fubai = [c for c in cells if c["stage"] == "不調"][0]
         self.assertIsNone(fubai["count"])
         self.assertEqual(fubai["count_label"], "1-2")
 
@@ -160,14 +161,14 @@ class 出す数字(unittest.TestCase):
             行(base_price=2000, sale_price=4000, status="売却"),
             行(base_price=3000, sale_price=3000, status="売却"),
         ])
-        c = [x for x in cells if x["stage"] == "結果-落札"][0]
+        c = [x for x in cells if x["stage"] == "落札"][0]
         self.assertEqual(c["base_median"], 2000)
         self.assertEqual(c["sale_median"], 3000)
         self.assertEqual(c["ratio_median"], 1.5)   # 1.5 / 2.0 / 1.0 の中央値
 
     def test_3件に満たなければ値段は出さない(self):
         cells = aggregate.aggregate([行(status="売却"), 行(status="売却")])
-        c = [x for x in cells if x["stage"] == "結果-落札"][0]
+        c = [x for x in cells if x["stage"] == "落札"][0]
         self.assertIsNone(c["base_median"])
         self.assertIsNone(c["sale_median"])
         self.assertIsNone(c["ratio_median"])
@@ -179,7 +180,7 @@ class 出す数字(unittest.TestCase):
             行(sale_price=3000, status="売却"),
             行(sale_price=1000000000, status="売却"),
         ])
-        uri = [x for x in cells if x["stage"] == "結果-落札"][0]
+        uri = [x for x in cells if x["stage"] == "落札"][0]
         self.assertEqual(uri["sale_median"], 2500)
 
     def test_不調と取下げを同じ欄に混ぜない(self):
@@ -192,8 +193,8 @@ class 出す数字(unittest.TestCase):
             行(status="売却"), 行(status="売却"), 行(status="売却"),
         ])
         n = {c["stage"]: c["count"] for c in cells}
-        self.assertEqual(n["結果-不調"], 3)      # 不売2＋不落1
-        self.assertEqual(n["結果-落札"], 3)
+        self.assertEqual(n["不調"], 3)      # 不売2＋不落1
+        self.assertEqual(n["落札"], 3)
         # **取下げの升は作らない。** 置き場が正本で決まっていない
         self.assertNotIn("取下げ", n)
 
@@ -227,7 +228,7 @@ class 出す数字(unittest.TestCase):
         ])
         n = {c["stage"]: c["count"] for c in cells}
         self.assertEqual(n["結果"], 3)           # 取下げの3回は入らない
-        self.assertEqual(n["結果-落札"], 3)
+        self.assertEqual(n["落札"], 3)
         self.assertNotIn("取下げ", n)
 
     def test_結果は落札と不調の足し算になっている(self):
@@ -237,7 +238,7 @@ class 出す数字(unittest.TestCase):
             行(status="取下げ"),
         ])
         n = {c["stage"]: c["count"] for c in cells}
-        self.assertEqual(n["結果"], n["結果-落札"] + n["結果-不調"])
+        self.assertEqual(n["結果"], n["落札"] + n["不調"])
 
 
 class 入札中と売却済みを混ぜない(unittest.TestCase):
@@ -250,7 +251,7 @@ class 入札中と売却済みを混ぜない(unittest.TestCase):
         ])
         self.assertEqual({c["stage"] for c in cells},
                          {"公告", "公告-新規", "公告-再公告",
-                          "結果", "結果-落札", "結果-不調"})
+                          "結果", "落札", "不調"})
 
     def test_1つの回が公告と結果の両方に入る(self):
         # 9月に公告されて10月に売れた回は、9月の公告と10月の売却の両方に入る。
@@ -261,8 +262,8 @@ class 入札中と売却済みを混ぜない(unittest.TestCase):
         got = {(c["stage"], c["ym"]) for c in cells}
         self.assertEqual(got, {("公告", "2026-09"), ("公告-新規", "2026-09"),
                                ("公告-再公告", "2026-09"),
-                               ("結果", "2026-10"), ("結果-落札", "2026-10"),
-                               ("結果-不調", "2026-10")})
+                               ("結果", "2026-10"), ("落札", "2026-10"),
+                               ("不調", "2026-10")})
 
     def test_再公告は新規に数えない(self):
         # 不売のあと、また公告に出た回。合計には入るが新規には入らない。
@@ -322,7 +323,7 @@ class 入札中と売却済みを混ぜない(unittest.TestCase):
         cells = aggregate.aggregate([
             行(status="売却", first_seen="2026-08-01", open_date="2026-10-06"),
         ])
-        uri = [c for c in cells if c["stage"] == "結果-落札"][0]
+        uri = [c for c in cells if c["stage"] == "落札"][0]
         self.assertEqual(uri["ym"], "2026-10")
 
     def test_落札率の分母と分子が分かれている(self):
@@ -333,8 +334,8 @@ class 入札中と売却済みを混ぜない(unittest.TestCase):
             行(status="不売"), 行(status="不売"), 行(status="不売"),
         ])
         kekka = [c for c in cells if c["stage"] == "結果"][0]
-        ochi = [c for c in cells if c["stage"] == "結果-落札"][0]
-        fucho = [c for c in cells if c["stage"] == "結果-不調"][0]
+        ochi = [c for c in cells if c["stage"] == "落札"][0]
+        fucho = [c for c in cells if c["stage"] == "不調"][0]
         self.assertEqual(kekka["count"], 9)     # 分母
         self.assertEqual(ochi["count"], 3)      # 分子
         self.assertEqual(fucho["count"], 6)
@@ -348,10 +349,6 @@ class 入札中と売却済みを混ぜない(unittest.TestCase):
             self.assertIn(k, cells[0])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class 段階は3つのまま(unittest.TestCase):
     """**段階は値ではなく位置なので、鍵に入れてよい**（正本 9節）。
 
@@ -363,10 +360,58 @@ class 段階は3つのまま(unittest.TestCase):
     決まるまで、升は作らず、行も捨てず、数だけ出す。
     """
 
-    def test_段階の語は予定と公告と結果だけ(self):
+    # 段階（親）に使ってよい語。位置なので鍵に入れてよい
+    段階 = ("予定", "公告", "結果")
+    # 結果の語。**この2つだけ**（正本 6節・2026-09-19）
+    結果の語 = ("落札", "不調")
+
+    def test_親は段階の3語だけ(self):
+        for parent in aggregate.FAMILIES.parents:
+            self.assertIn(parent, self.段階, parent)
+
+    def test_子は内訳か結果の語のどちらか(self):
+        """子は2通りある（正本 6節）。
+
+            公告-新規   段階の内訳。**親-… の形**
+            落札        結果の語。**親の接頭辞を持たない**
+        """
+        for f in aggregate.FAMILIES.families:
+            for kid in f[1:]:
+                内訳 = kid.startswith(f[0] + "-")
+                self.assertTrue(内訳 or kid in self.結果の語,
+                                "%s は内訳でも結果の語でもない" % kid)
+
+    def test_段階と結果を1つの升に混ぜない(self):
+        """**`結果-落札` のような名前を作らない**（正本 6節・2026-09-19）。
+
+        段階（結果）と結果（落札）が1つの升に入っている形。
+        前はこう書いていた。正本が直したので、こちらも直した。
+        """
         got = set(aggregate.FAMILIES.parents) | set(aggregate.FAMILIES.children)
         for stage in got:
-            self.assertTrue(stage.startswith(("予定", "公告", "結果")), stage)
+            for 段 in self.段階:
+                for 語 in self.結果の語:
+                    self.assertNotEqual(stage, "%s-%s" % (段, 語), stage)
+
+    def test_結果の升に出るのは落札と不調だけ(self):
+        """相手のページの語（売却・不売・売却済）は**読むだけ**。
+
+        こちらが書き出す語は 落札／不調 の2つ。取り違えると、
+        4サイトで同じものが4通りの名前になる。
+        """
+        for 語, 原文たち in (("落札", aggregate.SOLD),
+                          ("不調", aggregate.UNSOLD)):
+            for 原文 in 原文たち:
+                cells = aggregate.aggregate(
+                    [行(status=原文, open_date="2026-10-01")])
+                stages = {c["stage"] for c in cells}
+                self.assertIn(語, stages, 原文)
+                # **「落札」は両方に入っている。** 相手のページにも出るし、
+                # こちらが書き出す語でもある。だから
+                # 「相手の語が升に出ていないこと」は、語が違うときだけ見る
+                if 原文 != 語:
+                    self.assertNotIn(原文, stages,
+                                     "相手の語 %s をそのまま升に出している" % 原文)
 
     def test_取下げの升を作らない(self):
         cells = aggregate.aggregate([行(status="取下げ")])
@@ -455,3 +500,152 @@ class 取下げと繰り越しは別物(unittest.TestCase):
         pk = row.get("property_key") or ""
         self.assertNotIn(row.get("open_date") or "@@", pk,
                          "property_key に開札日が入っている")
+
+
+class 足したときに数が合うこと(unittest.TestCase):
+    """正本 3.2（2026-09-19）。**合わなければ黙って落としている。**
+
+    正本の等式は「升の合計 ＋ not_counted の3つ ＝ 見た行の数」。
+    **このサイトではそのままでは閉じない。** 1つの行が2つ以上の升に入り、
+    取下げになった行は公告の升にも入ったまま残るため
+    （母集団の保存が先。正本 3.5）。実測で 106 ＋ 1 ＝ 107 ≠ 106 になった。
+
+    だから2つに分けて見る（食い違いとして報告ずみ。
+    docs/seihon-toiawase.md #11）。
+
+        ① 行方の保存（在庫）… 1行は必ず1つの行方に入る
+        ② 内訳の保存（流量）… 子の升を足すと親の升になる
+    """
+
+    def test_1行は必ず1つの行方に入る(self):
+        rows = [行(status="売却", open_date="2026-10-01"),
+                行(status="不売", open_date="2026-10-01"),
+                行(status="取下げ"),
+                行(status="", gone_on="2026-09-18"),
+                行(status="", open_date="2099-01-01"),
+                行(status="よく分からない語", open_date="2026-10-01")]
+        got = [aggregate.yukue(r, today="2026-10-20") for r in rows]
+        self.assertEqual(got, ["落札", "不調", "取下げ", "消えた", "待ち",
+                               "読めない"])
+
+    def test_行方を足すと見た行の数になる(self):
+        rows = [行(status="売却", open_date="2026-10-01"),
+                行(status="取下げ"),
+                行(status="", open_date="2099-01-01")]
+        d = aggregate.kazu_ga_au(rows, today="2026-10-20")
+        self.assertEqual(sum(d["行方"].values()), len(rows))
+        self.assertEqual(d["食い違い"], [])
+
+    def test_合図が2つ立っている行は黙って選ばない(self):
+        """**取下げなのに消えてもいる**行。順番で1つに決めるが、記録は残す。"""
+        r = 行(status="取下げ", gone_on="2026-09-18")
+        self.assertEqual(aggregate.yukue(r), "取下げ")
+        self.assertEqual(aggregate.yukue_conflicts(r), ["取下げ", "消えた"])
+        d = aggregate.kazu_ga_au([r])
+        self.assertEqual(d["重なり"], 1)
+        # 重なっていても、行方は1つなので合計は合う
+        self.assertEqual(sum(d["行方"].values()), 1)
+
+    def test_合図が1つなら重なりに出ない(self):
+        self.assertEqual(aggregate.yukue_conflicts(行(status="取下げ")), [])
+
+    def test_内訳が合わなければ拾う(self):
+        rows = [行(status="売却", open_date="2026-10-01")]
+        cells = aggregate.aggregate(rows, with_raw=True)
+        self.assertEqual(aggregate.kazu_ga_au(rows, cells,
+                                              today="2026-10-20")["食い違い"], [])
+        # 子の升を1つ落とすと鳴る
+        欠け = [c for c in cells if c["stage"] != "不調"]
+        d = aggregate.kazu_ga_au(rows, 欠け, today="2026-10-20")
+        self.assertTrue(d["食い違い"], "子を落としたのに鳴らない")
+
+    def test_行方の語は全部数えられる(self):
+        """**YUKUE に足した語を、kazu_ga_au が数え落とさない。**"""
+        rows = [行(status="売却", open_date="2026-10-01"),
+                行(status="不売", open_date="2026-10-01"),
+                行(status="取下げ"), 行(status="", gone_on="2026-09-18"),
+                行(status="", open_date="2099-01-01"),
+                行(status="謎", open_date="2026-10-01")]
+        d = aggregate.kazu_ga_au(rows, today="2026-10-20")
+        self.assertEqual(set(d["行方"]), set(aggregate.YUKUE))
+
+    def test_not_countedの3つは行方から作る(self):
+        """**数え方を2つ持たない**（正本 9節）。
+
+        述語を別々に呼ぶと、排他でない行が2つの欄に入って合計が超える。
+        """
+        import make_index
+        rows = [行(status="取下げ", gone_on="2026-09-18")]
+        got = make_index.not_counted(rows)
+        self.assertEqual(sum(got.values()), 1,
+                         "同じ行が2つの欄に入っている: %r" % (got,))
+        self.assertEqual(got["undecided"], 1)
+        self.assertEqual(got["gone"], 0)
+
+
+class 見張りと出力語がずれない(unittest.TestCase):
+    """**自分が書き出した語を、自分の見張りが人名として拾わないこと。**
+
+    「不調」は漢字2文字で、`looks_like_person_name` の網（2〜8文字）に
+    素で掛かる。`OUR_WORDS` に足し忘れると、公開ファイルの見張りが
+    毎回鳴って誰も見なくなる（正本 9節「鳴らせていない見張り」の裏返し）。
+    """
+
+    def test_出力語はOUR_WORDSに入っている(self):
+        from common import privacy
+        words = (set(aggregate.FAMILIES.parents)
+                 | set(aggregate.FAMILIES.children) | {aggregate.TORISAGE})
+        欠け = sorted(w for w in words
+                     if "-" not in w and w not in privacy.OUR_WORDS)
+        self.assertEqual(欠け, [], "OUR_WORDS に無い出力語")
+
+    def test_出力語を人名として拾わない(self):
+        from common import privacy
+        words = (set(aggregate.FAMILIES.parents)
+                 | set(aggregate.FAMILIES.children) | {aggregate.TORISAGE})
+        for w in sorted(words):
+            self.assertFalse(privacy.looks_like_person_name(w), w)
+
+
+class 実数を出力に残さない(unittest.TestCase):
+    """`_n` は**伏せた升の真の件数**。出力に残ると、伏せた意味が消える。
+
+    `with_raw=True` は2つのためだけに使う。
+
+        引き算の手当て（親を出すか決める。正本 3.2）
+        足したときに数が合うかの検査
+
+    どちらも書き出す前に終わる。**書き出すときには落ちていること。**
+    ここが抜けると、"1-2" と書いた升の隣に 1 か 2 がそのまま並ぶ。
+    """
+
+    def test_with_rawを付けたときだけ実数が付く(self):
+        rows = [行(status="売却", open_date="2026-10-01")]
+        self.assertNotIn("_n", aggregate.aggregate(rows)[0])
+        self.assertIn("_n", aggregate.aggregate(rows, with_raw=True)[0])
+
+    def test_伏せた升の実数が出力に残らない(self):
+        """1件の升（"1-2" に伏せる）で確かめる。**いちばん危ない形。**"""
+        cells = aggregate.aggregate([行(status="売却", open_date="2026-10-01")])
+        伏せた = [c for c in cells if c["count"] is None]
+        self.assertTrue(伏せた, "1件の升が伏せられていない")
+        for c in 伏せた:
+            self.assertEqual(c["count_label"], "1-2")
+            self.assertNotIn("_n", c, "伏せた升に実数が付いている")
+
+    def test_書き出したファイルに実数が入っていない(self):
+        """**実物を読んで確かめる。** 落とす処理の順番が変わっても鳴る。"""
+        import json
+        import os
+        if not os.path.exists(aggregate.OUT_PATH):
+            self.skipTest("data/agg/monthly.json が無い（金庫の外）")
+        with io.open(aggregate.OUT_PATH, encoding="utf-8") as f:
+            text = f.read()
+        self.assertNotIn('"_n"', text,
+                         "%s に実数が残っている" % aggregate.OUT_PATH)
+        for cell in json.loads(text)["cells"]:
+            self.assertNotIn("_n", cell)
+
+
+if __name__ == "__main__":
+    unittest.main()

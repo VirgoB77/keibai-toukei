@@ -136,7 +136,7 @@ class 升は3つ組でひとつ(unittest.TestCase):
 class 引き算で伏せた升を戻せない(unittest.TestCase):
     """正本 3.2「同じものを2つの粗さで出していると、引き算で正確な値が分かる」。
 
-        結果 6 ／ 結果-落札 4 ／ 結果-不調 1-2  →  6 − 4 ＝ 2
+        結果 6 ／ 落札 4 ／ 不調 1-2  →  6 − 4 ＝ 2
 
     1件なのか2件なのかまで分かり、伏せた意味が消える。
     """
@@ -158,8 +158,8 @@ class 引き算で伏せた升を戻せない(unittest.TestCase):
         rows += [self.行(i, "不売") for i in range(4, 6)]
         cb = make_index.build(rows)["counts_by_city"]
         kinds = {c["kind"] for c in cb}
-        self.assertIn("競売/結果-落札", kinds)
-        self.assertIn("競売/結果-不調", kinds)
+        self.assertIn("競売/落札", kinds)
+        self.assertIn("競売/不調", kinds)
         self.assertNotIn("競売/結果", kinds)
 
     def test_親は常に出さない(self):
@@ -179,7 +179,7 @@ class 引き算で伏せた升を戻せない(unittest.TestCase):
         cb = make_index.build(rows)["counts_by_city"]
         n = {c["kind"]: c["count"] for c in cb}
         self.assertEqual(n["競売/公告-新規"] + n["競売/公告-再公告"], 7)
-        self.assertEqual(n["競売/結果-落札"] + n["競売/結果-不調"], 7)
+        self.assertEqual(n["競売/落札"] + n["競売/不調"], 7)
 
     def test_落札率の材料は残る(self):
         # 親を落としても、分母は「落札＋不調」で読者が作れる
@@ -187,8 +187,8 @@ class 引き算で伏せた升を戻せない(unittest.TestCase):
         rows += [self.行(i, "不売") for i in range(4, 6)]
         cb = make_index.build(rows)["counts_by_city"]
         got = {c["kind"]: c["count_label"] for c in cb}
-        self.assertEqual(got["競売/結果-落札"], "4")
-        self.assertEqual(got["競売/結果-不調"], "1-2")
+        self.assertEqual(got["競売/落札"], "4")
+        self.assertEqual(got["競売/不調"], "1-2")
 
     def test_公告も同じように守る(self):
         # 公告 ＝ 公告-新規 ＋ 公告-再公告。再公告の升を出していなかったころは、
@@ -358,8 +358,8 @@ class 正本32_合計の升と内訳の升を両方出さない(unittest.TestCas
         kinds = {c["kind"] for c in cb}
         self.assertIn("競売/公告-新規", kinds)
         self.assertIn("競売/公告-再公告", kinds)
-        self.assertIn("競売/結果-落札", kinds)
-        self.assertIn("競売/結果-不調", kinds)
+        self.assertIn("競売/落札", kinds)
+        self.assertIn("競売/不調", kinds)
 
     def test_決まり3_0件の内訳は0と書く(self):
         # 伏せた升（null）と本当に0件の升（0）を見た目で分ける
@@ -367,7 +367,7 @@ class 正本32_合計の升と内訳の升を両方出さない(unittest.TestCas
         cb = make_index.build(rows)["counts_by_city"]
         n = {c["kind"]: (c["count"], c["count_label"]) for c in cb}
         self.assertEqual(n["競売/公告-再公告"], (0, "0"))
-        self.assertEqual(n["競売/結果-不調"], (0, "0"))
+        self.assertEqual(n["競売/不調"], (0, "0"))
         for c in cb:
             if c["count"] is None:
                 self.assertEqual(c["count_label"], "1-2")
@@ -388,7 +388,7 @@ class 正本32_合計の升と内訳の升を両方出さない(unittest.TestCas
         self.assertEqual(aggregate.FAMILIES.undeclared(aggregate.CHILDREN), [])
         # わざと登録していない内訳を渡すと拾う
         self.assertEqual(
-            aggregate.FAMILIES.undeclared(["土地-農地", "結果-落札", "土地"]),
+            aggregate.FAMILIES.undeclared(["土地-農地", "落札", "土地"]),
             ["土地-農地"])
         for stage in aggregate.PARENTS:
             self.assertNotIn("-", stage, stage)

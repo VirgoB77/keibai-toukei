@@ -48,6 +48,7 @@ from aggregate import stage_of  # noqa: E402
 from aggregate import unresolved as aggregate_unresolved  # noqa: E402
 from aggregate import undecided as aggregate_undecided  # noqa: E402
 from aggregate import gone as aggregate_gone  # noqa: E402
+from aggregate import YUKUE_KEY, yukue, kazu_ga_au  # noqa: E402
 from common import privacy  # noqa: E402
 from common import report  # noqa: E402
 from common import site  # noqa: E402
@@ -81,6 +82,26 @@ BUSINESS_USE = re.compile(r"店舗|事務所|工場|倉庫|商業地|工業地")
 # 物件の種類（土地・マンション）は集計のほうで別の軸として持っている。
 SYSTEM_LABEL = {"keibai": "競売", "kobai": "公売",
                 "kokuyu": "国有財産", "koyu": "公有財産"}
+
+
+def not_counted(rows):
+    """升に結果が出ていない行の数。**欄の名前は正本 6節が決めた3つ。**
+
+        unresolved  読めなかった。語彙の穴。**こちらが減らす**
+        undecided   読めている。置き場が正本で未定。**こちらでは減らせない**
+        gone        消えた。**待たないと決められない。時間が決める**
+
+    **減らせる主体が違うので、1つにまとめない**（正本 6節・2026-09-19）。
+
+    数えるのは `aggregate.yukue()`。1行は必ず1つの行方に入るので、
+    ここの3つと「落札・不調・待ち」を足すと、必ず見た行の数になる。
+    """
+    out = {k: 0 for k in ("unresolved", "undecided", "gone")}
+    for r in rows:
+        key = YUKUE_KEY.get(yukue(r))
+        if key:
+            out[key] += 1
+    return out
 
 
 def corp_name(name):
@@ -246,11 +267,23 @@ def build(rows, today=None):
     dropped = [c for c in make_cells(rows, INDEX_FIELDS, with_raw=True)
                if not c.get("city_code")]
 
+    # **数が合うかを、index.json に書く前にもう一度確かめる**
+    # （正本 3.2・2026-09-19）。aggregate.py でも見ているが、あちらは
+    # 種別ごとの升、こちらは種別を畳んだ升で、**数え直している**。
+    # 畳むところで落ちても、あちらは気づかない。
+    # 市区町村コードで絞る前の `everything` で見る（絞ったあとだと、
+    # 落ちた升のぶんだけ子の合計が親に足りなくなる）。
+    kazu = kazu_ga_au(rows, everything)
+    if kazu["食い違い"]:
+        raise RuntimeError(
+            "数が合わない。黙って落としている。\n  "
+            + "\n  ".join(kazu["食い違い"]))
+
     # **親の升を出さない**（正本 3.2「合計の升と、内訳の升を、両方出さない」）。
     # 理由は2つあって、どちらも同じ直し方になる。
     #
-    # 1. 引き算で戻る。結果 ＝ 結果-落札 ＋ 結果-不調 なので、
-    #    「結果6 − 結果-落札4 ＝ 2」で伏せた升の正確な値が出る（値は架空）
+    # 1. 引き算で戻る。結果 ＝ 落札 ＋ 不調 なので、
+    #    「結果6 − 落札4 ＝ 2」で伏せた升の正確な値が出る（値は架空）
     # 2. 足し算が二重になる。公告-新規は公告の**内数**なので、
     #    並べて出すと「公告66 ＋ 公告-新規66 ＝ 132」と読める（物件は106件）
     #
@@ -290,12 +323,13 @@ def build(rows, today=None):
         #   undecided   読めている。置き場が正本で決まっていない。**こちらでは減らせない**
         #
         # 欄の名前は正本6節にまだ無い。**blessing 待ち**（docs/seihon-toiawase.md）
-        "not_counted": {
-            "unresolved": sum(1 for r in rows if aggregate_unresolved(r)),
-            "undecided": sum(1 for r in rows if aggregate_undecided(r)),
-            # 消えた。**取下げか繰り越しか、再登場を待たないと決められない**
-            "gone": sum(1 for r in rows if aggregate_gone(r)),
-        },
+        # **数え方を2つ持たない**（正本 9節「2か所で別々に数えない」）。
+        # 前はここで3つの述語を別々に呼んでいた。述語どうしが排他でない
+        # （取下げの行に gone_on も立っている、など）と、同じ行が2つの欄に
+        # 入って合計が見た行の数を超える。`yukue()` は上から1つに決めるので、
+        # 足すと必ず見た行の数になる。決めたときに落ちた合図は
+        # `yukue_conflicts()` が拾い、data/parse-unknown.md に出る
+        "not_counted": not_counted(rows),
         "_dropped": dropped,      # 呼ぶ側が人に知らせるためのもの。出力からは外す
         "_yoyuu": measure_yoyuu(cells, drop),
     }

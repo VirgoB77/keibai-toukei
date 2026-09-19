@@ -111,6 +111,21 @@ class コミットの枠(unittest.TestCase):
 
         名簿が実物より大きいままだと、本当に増えたときに
         「増えた − 名簿」で打ち消されることはないが、名簿が嘘になる。
+
+        **「1つも無い」と「いくつか消えた」は別のこと**（2026-09-19）。
+
+        名簿は**この金庫の履歴**のものなので、公開用のリポジトリ
+        （履歴ゼロで別に作った）には1つも無い。そこで落とすと、
+        **公開用では毎回落ちる検査**になる。実際そうなっていた。
+
+        公開用の Actions は取りに行く前に
+        `python3 -m unittest discover -s tests` を通す。
+        **この1本のせいで、1回も通らないまま止まる。**
+
+        だから見分ける。
+
+            1つも無い       別の履歴。この検査の見る相手ではない → skip
+            いくつか消えた   名簿が古い → 落とす
         """
         out = git("log", "--all", "--format=%H%x09%ae%x09%ce")
         self.assertIsNotNone(out)
@@ -119,6 +134,10 @@ class コミットの枠(unittest.TestCase):
             h, ae, ce = line.split("\t")
             if not allowed(ae) or not allowed(ce):
                 found.add(h)
+        if KNOWN and not (KNOWN & found):
+            self.skipTest(
+                "名簿のコミットが1つも無い。**別の履歴**（公開用は履歴ゼロで"
+                "作ってある）。名簿はこの金庫のものなので、ここでは見ない")
         self.assertEqual(sorted(KNOWN - found), [],
                          "名簿にあるコミットが履歴から消えている。名簿を縮めること")
 
