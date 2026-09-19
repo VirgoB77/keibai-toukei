@@ -56,20 +56,54 @@ class _追わない(urllib.request.HTTPRedirectHandler):
 
 
 def 取りに行く(url):
-    """(HTTPの番号, 中身) を返す。つながらなければ (0, 理由)。"""
+    """(HTTPの番号, 中身, Content-Type) を返す。つながらなければ (0, 理由, "")。"""
     opener = urllib.request.build_opener(_追わない)
     req = urllib.request.Request(url, headers={"User-Agent": site.user_agent()})
     最後 = ""
     for i in range(TRIES):
         try:
             with opener.open(req, timeout=TIMEOUT) as r:
-                return r.getcode(), r.read().decode("utf-8", "replace")
+                return (r.getcode(), r.read().decode("utf-8", "replace"),
+                        r.headers.get("Content-Type", ""))
         except urllib.error.HTTPError as e:
             # 404 も 301 も「返ってきた」。数として持って帰る
-            return e.code, ""
+            return e.code, "", ""
         except Exception as e:                     # noqa: BLE001 つながらない理由は何でも同じ扱い
             最後 = "%s: %s" % (type(e).__name__, e)
-    return 0, 最後
+    return 0, 最後, ""
+
+
+def 入口を見る(base):
+    """**人が来る1枚**を見る。戻り値は終了コード（0 なら止めない）。
+
+    ドメインを付けるのと、人が見るページを作るのは別の作業。
+    **ドメインを付けた日から、そのドメインは404を返す。**
+
+    2026-09-19 に実際にそうなった。`data/index.json` は配信できていたのに、
+    `.html` が1枚も無く（`.nojekyll` があるので Markdown も描かれない）、
+    **来た人は全員404を見ていた。** 配っているファイルだけを見る検査は、
+    それを1つも捕まえない。**別の問いなので、別に見る。**
+    """
+    url = base.rstrip("/") + "/"
+    print("入口を見る: %s" % url)
+    code, body, ctype = 取りに行く(url)
+
+    if code == 0:
+        print("::error::入口につながらない。%s" % body)
+        return 1
+    if code in (301, 302, 303, 307, 308):
+        print("::error::入口が %d で飛ばした。**追わない**。%s" % (code, url))
+        print("飛ばされない側を入口にすること")
+        return 1
+    if code != 200:
+        print("::error::**入口が %d。来た人はこれを見る。** %s" % (code, url))
+        print("公開用の木に人が読む1枚があるか見ること")
+        return 1
+    if "html" not in (ctype or "").lower():
+        print("::error::入口が HTML ではない（%s）。%s" % (ctype, url))
+        return 1
+    print("入口: %d バイトの HTML が返っている" % len(body.encode("utf-8")))
+    return 0
 
 
 def 見る(base):
@@ -77,7 +111,7 @@ def 見る(base):
     # **置き場は site.py の1か所から取る。** ここに書き直さない
     url = base.rstrip("/") + "/" + site.INDEX_PATH
     print("取りに行く: %s" % url)
-    code, body = 取りに行く(url)
+    code, body, _ctype = 取りに行く(url)
 
     if code == 0:
         print("::error::配信につながらない。%s" % body)
@@ -130,7 +164,10 @@ def main(argv):
         # 鳴らなくなるのではなく**見られなくなる**
         print("入口のURLがまだ空。配信はまだ始まっていない。ここは見ない")
         return 0
-    return 見る(base)
+    # **2つとも見る。片方だけ通っても足りない。**
+    # 機械向けのファイルが配れていても、人が来る1枚が404なら
+    # 来た人は何も読めない。逆も同じ
+    return 入口を見る(base) or 見る(base)
 
 
 if __name__ == "__main__":

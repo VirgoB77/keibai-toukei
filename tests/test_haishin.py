@@ -30,6 +30,9 @@ from common import site  # noqa: E402
 
 # サーバーが配るもの。テストごとに入れ替える
 配るもの = {"code": 200, "body": "{}", "type": "application/json"}
+# 入口（`/`）が配るもの。**配っているファイルとは別の道**
+入口 = {"code": 200, "body": "<html><body>競売・公売の統計</body></html>",
+        "type": "text/html; charset=utf-8"}
 見たUA = []
 
 
@@ -40,6 +43,18 @@ class _手(BaseHTTPRequestHandler):
         # **飛ばし先は必ず通る中身にしておく。**
         # 飛ばし先も止まる形にすると、追っても追わなくても止まるので、
         # 「追わないこと」を確かめたことにならない（検査が空回りする）
+        if self.path == "/":
+            body = 入口["body"].encode("utf-8")
+            self.send_response(入口["code"])
+            if 入口["code"] in (301, 302, 307, 308):
+                self.send_header("Location", "http://example.test/")
+                self.end_headers()
+                return
+            self.send_header("Content-Type", 入口["type"])
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if self.path == "/tobisaki.json":
             body = b'{"records": [], "counts_by_city": [9]}'
             self.send_response(200)
@@ -91,6 +106,9 @@ class 配信を見る(unittest.TestCase):
         del 見たUA[:]
         配るもの.update({"code": 200, "body": "{}",
                           "type": "application/json"})
+        入口.update({"code": 200,
+                      "body": "<html><body>競売・公売の統計</body></html>",
+                      "type": "text/html; charset=utf-8"})
 
     def 見る(self, **配る):
         配るもの.update(配る)
@@ -192,6 +210,86 @@ class 入口が空の日(unittest.TestCase):
         import inspect
         src = inspect.getsource(check_haishin.main)
         self.assertIn("argv[1]", src)
+
+
+class 人が来る1枚を見る(unittest.TestCase):
+    """**ドメインを付けた日から、そのドメインは404を返す**（2026-09-19）。
+
+    ドメインを付けるのと、人が見るページを作るのは別の作業。
+    実際にそうなった。`data/index.json` は配信できていたのに、
+    `.html` が1枚も無く（`.nojekyll` があるので Markdown も描かれない）、
+    **来た人は全員404を見ていた。**
+
+    配っているファイルだけを見る検査は、それを1つも捕まえない。
+    **別の問いなので、別に見る。**
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        配信を見る.setUpClass.__func__(cls)
+
+    @classmethod
+    def tearDownClass(cls):
+        配信を見る.tearDownClass.__func__(cls)
+
+    def setUp(self):
+        del 見たUA[:]
+        配るもの.update({"code": 200,
+                          "body": json.dumps({"records": [],
+                                              "counts_by_city": []}),
+                          "type": "application/json"})
+        入口.update({"code": 200,
+                      "body": "<html><body>競売・公売の統計</body></html>",
+                      "type": "text/html; charset=utf-8"})
+
+    def 走らせる(self):
+        out = io.StringIO()
+        keep = sys.stdout
+        sys.stdout = out
+        try:
+            code = check_haishin.main(
+                ["check_haishin.py", "http://127.0.0.1:%d/" % self.port])
+        finally:
+            sys.stdout = keep
+        return code, out.getvalue()
+
+    def test_入口もファイルも通れば通る(self):
+        code, 文 = self.走らせる()
+        self.assertEqual(code, 0, 文)
+        self.assertIn("入口", 文)
+        self.assertIn("からっぽ", 文)
+
+    def test_入口が404なら止める(self):
+        """**これが 2026-09-19 に起きた形。**"""
+        入口.update({"code": 404, "body": "", "type": "text/html"})
+        code, 文 = self.走らせる()
+        self.assertEqual(code, 1)
+        # **何と言うかまで縛る。** 7時半に読む人が、どこを直せばよいか分かる文
+        # （「HTMLではない」と言われると、別の場所を探しに行く）
+        self.assertIn("来た人はこれを見る", 文)
+        self.assertIn("404", 文)
+        self.assertNotIn("からっぽ", 文,
+                         "入口が落ちているのに、ファイルの話まで進んでいる")
+
+    def test_入口がHTMLでなければ止める(self):
+        入口.update({"code": 200, "body": "{}", "type": "application/json"})
+        code, 文 = self.走らせる()
+        self.assertEqual(code, 1)
+        self.assertIn("HTML ではない", 文)
+
+    def test_入口が飛ばしたら止める(self):
+        入口.update({"code": 301, "body": "", "type": "text/html"})
+        code, 文 = self.走らせる()
+        self.assertEqual(code, 1)
+        self.assertIn("301", 文)
+
+    def test_入口が通ってもファイルが落ちていれば止める(self):
+        """**片方だけ通っても足りない。**"""
+        配るもの.update({"body": json.dumps({"records": [{"a": 1}],
+                                              "counts_by_city": []})})
+        code, 文 = self.走らせる()
+        self.assertEqual(code, 1)
+        self.assertIn("個票が 1 件", 文)
 
 
 if __name__ == "__main__":
