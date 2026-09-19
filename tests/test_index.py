@@ -8,13 +8,15 @@
     python3 -m unittest discover -s tests
 """
 
+import json
 import os
 import shutil
 import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
 
 import make_index  # noqa: E402
 
@@ -716,6 +718,75 @@ class 名乗れる語だけで数える(unittest.TestCase):
             for k in 欄:
                 self.assertNotIn(語, k, "升に率の欄がある（%s）" % k)
         self.assertNotIn("rate", set(out))
+
+
+class 原因の違うものを1つの欄に入れない(unittest.TestCase):
+    """**`unresolved` は「試して失敗した」という主張**（2026-09-19）。
+
+    6節の意味は「読めなかった。語彙の穴。**こちらが減らす**」。
+    ところが競売の結果は1枚も取りに行っていない
+    （`bit-result` は URL が無く `enabled: false`、読み取りも無い）。
+
+    開札日が過ぎた行は、**語が分からなかったのではなく、見に行っていない**。
+    語をいくつ足しても1件も減らない。
+
+        きょう 2026-09-19   0 件
+        2026-10-03          37 件
+        2026-12-25          **105 / 106**
+
+    `open_date` が全部未来だったので、**この道は1度も走っていない。**
+    10月2日に最初の1件が入る。
+
+    正本に聞いている（docs/seihon-toiawase.md #18）。
+    ここは**答えが来るまで、数が動くことを留めておく**ための検査。
+    """
+
+    def 行(self, i, open_date):
+        return {"system": "keibai", "pref": "大阪府", "city": "茨木市",
+                "kind": "土地", "first_seen": "2026-09-17",
+                "seen": ["2026-09-17"], "open_date": open_date, "status": "",
+                "property_key": "x:%d:1" % i,
+                "key": "x:%d:1:%s" % (i, open_date), "saishutsu": False}
+
+    def test_開札日が来る前は読めないに入れない(self):
+        """**まだ起きていないものを「読めなかった」と言わない。**"""
+        rows = [self.行(i, "2026-11-05") for i in range(3)]
+        self.assertEqual(
+            make_index.not_counted(rows, "2026-09-19")["unresolved"], 0)
+
+    def test_開札日が過ぎると読めないに入る(self):
+        """**いまはこうなる、を留めておく。**
+
+        減らせない穴なので、答えが来たら分ける。
+        分けた日にこの検査が落ちる。**落ちるのが正しい。**
+        """
+        rows = [self.行(i, "2026-11-05") for i in range(3)]
+        self.assertEqual(
+            make_index.not_counted(rows, "2026-12-25")["unresolved"], 3)
+
+    def test_結果の読み取りはまだ無い(self):
+        """**これが「減らせない」の根拠。**
+
+        読み取りが書かれた日に、上の2本の意味が変わる。
+        そのとき一緒に見直すために、ここで留めておく。
+        """
+        import parse
+        self.assertEqual(parse.INBOX_READABLE, ("list",))
+        with open(os.path.join(ROOT, "sources.json"), encoding="utf-8") as f:
+            srcs = json.load(f)["sources"]
+        結果 = [s for s in srcs if s["id"] == "bit-result"][0]
+        self.assertFalse(結果.get("enabled"),
+                         "競売の結果を取り始めたなら、not_counted の意味も見直すこと")
+
+    def test_正本に聞いてあることを控えてある(self):
+        """**チャットで送っただけでは、両方が忘れる**（docs の冒頭）。"""
+        path = os.path.join(ROOT, "docs", "seihon-toiawase.md")
+        if not os.path.exists(path):
+            self.skipTest("問い合わせの控えがここには無い")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn("unresolved", text)
+        self.assertIn("見に行っていない", text)
 
 
 if __name__ == "__main__":
