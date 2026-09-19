@@ -1,0 +1,62 @@
+# 公開用のリポジトリ（VirgoB77/keibai-toukei）に置く workflow。
+#
+# **このファイルは、ここでは走らない。** 金庫に `.github/workflows/` を
+# 増やさないため、ふつうのファイルとして置いてある。
+# `make_public_tree.py` が `.github/workflows/haishin.yml` として入れる。
+#
+# ## なぜ毎朝の workflow と別に要るか
+#
+# 毎朝のほうは**取りに行ったあと**にしか配信を見ない。だから
+#
+#     相手のサーバーが落ちて偵察で止まった日   配信を見ないまま終わる
+#     site_url を入れる前に確かめたい日         毎朝を回すと相手に触る
+#
+# **相手のサーバーに触らずに、配信だけを見たい日がある。** ここがその手。
+# ⑤ Pages の直後がまさにそれで、**確かめてから site_url を入れる**のが
+# 順番なので、入れないと確かめられない作りにすると順番が逆になる。
+#
+# ## 自分で走り出さない
+#
+# `schedule` を持たない。手で押したときだけ走る。
+# 毎朝の分は毎朝のほうが見るので、ここが勝手に走ると同じものを2回見る。
+name: 配信を確かめる
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "入口のURL（空なら common/site.json の site_url を見る）"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  TZ: Asia/Tokyo
+
+jobs:
+  haishin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # **名前による自己停止。** 名前が `-raw` で終わるなら、そこは金庫。
+      # 金庫に workflow を持たせない（正本 9節）。
+      # ここは外に出るだけで金庫には触らないが、**逃げ道を1つも作らない。**
+      # 「ここは触らないから要らない」を1回許すと、次に同じ理由が使われる。
+      - name: 金庫では走らないことの確認
+        run: |
+          case "${{ github.repository }}" in
+            *-raw|*-raw-*)
+              echo "::error::金庫（名前が -raw）でこの workflow が走っている。"
+              echo "これは公開用の workflow。収集用は置き場で、Actions を持たない。"
+              echo "今日は何も取りに行かない。"
+              exit 1
+              ;;
+          esac
+          echo "置き場の名前を確認した: ${{ github.repository }}"
+
+      # 中身は毎朝のほうと同じものを呼ぶ。**2か所に書かない。**
+      - name: 配られている実物を見る
+        run: python3 scripts/check_haishin.py "${{ github.event.inputs.url }}"

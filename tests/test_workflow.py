@@ -205,7 +205,16 @@ class 走った日は1回だけ決める(unittest.TestCase):
                 n, 1, "%s が時計を %d 回打っている。"
                       "走り始めに1回決めて $GITHUB_ENV に置くこと"
                       % (os.path.basename(path), n))
-            self.assertIn("RUN_DATE", body, "走った日を渡していない")
+            # **時計を1回も見ない workflow には、渡す値が無い**（2026-09-19）。
+            # 手で押す配信の確認は日付を記録しないので `RUN_DATE` を持たない。
+            # 「持っていること」を全部に求めると、**持つ理由が無いものに
+            # 持たせる**ことになり、そのうち意味を見ずに足すようになる。
+            # 縛るのは「2回打たない」のほうで、こちらは打つときだけ見る。
+            if n:
+                self.assertIn(
+                    "RUN_DATE", body,
+                    "%s が時計を打っているのに、値を渡していない"
+                    % os.path.basename(path))
             self.assertEqual(
                 top_env(text).get("TZ"), "Asia/Tokyo",
                 "%s のいちばん上の env に TZ: Asia/Tokyo が無い。"
@@ -444,36 +453,104 @@ class 公開用のworkflowの控え(unittest.TestCase):
         """
         self.assertIn("配られている実物を見る", self.body)
         配信 = self.body[self.body.index("配られている実物を見る"):]
-        self.assertIn("site_url", 配信)
-        self.assertIn("index.json", 配信)
-        self.assertIn("curl", 配信)
+        self.assertIn("check_haishin.py", 配信)
 
-    def test_配られている実物で個票が無いことを見る(self):
-        """**いちばん出してはいけないもの**を、実物のほうで数える（正本 1節）。
+    def test_配信の中身を2か所に書かない(self):
+        """**手で押す workflow と同じものを呼ぶ。**
 
-        200 が返ったことだけを見ると、
-        「配信は生きているが中身が入れ替わっている」を通す。
+        前はここに Python を直接書いていた。手で押せる workflow を足したとき、
+        同じ判定が2か所になる。**片方だけ直る形を先に潰す。**
         """
         配信 = self.body[self.body.index("配られている実物を見る"):]
-        self.assertIn("records", 配信)
-        self.assertIn("sys.exit(1)", 配信)
+        for 中身 in ("records", "counts_by_city", "json.loads"):
+            self.assertNotIn(中身, 配信,
+                             "配信の判定が workflow の中に書いてある。"
+                             "scripts/check_haishin.py に寄せること")
 
-    def test_site_urlが空のあいだは配信を見に行かない(self):
+    def test_site_urlが空のあいだは待たない(self):
         """**鳴らない見張りにしない**（正本 3.3）。
 
-        ⑤ Pages がまだなら配信は無い。毎朝赤にすると、
-        鳴らなくなるのではなく**見られなくなる**。
-        site_url が入った日から、ひとりでに効き始める形にする。
+        ⑤ Pages がまだなら配信は無い。判定そのものは
+        `check_haishin.py` が素通りするが、**待ち時間まで素通りさせる。**
+        毎朝1分を、何も見ないために使わない。
         """
         配信 = self.body[self.body.index("配られている実物を見る"):]
-        空のとき = 配信[:配信.index("sleep")]
-        self.assertIn("exit 0", 空のとき,
-                      "site_url が空の日は、赤にせずに素通りすること")
+        self.assertIn("base_url", 配信)
+        self.assertLess(配信.index("base_url"), 配信.index("sleep"),
+                        "入口が空かどうかを見る前に待っている")
 
     def test_配信を見るのは公開用にしまったあと(self):
         """順番。**押す前の木を見ても、配られているものは分からない。**"""
         self.assertLess(self.body.index("公開用にしまう（許可リスト）"),
                         self.body.index("配られている実物を見る"))
+
+
+class 手で押す配信の確認(unittest.TestCase):
+    """**相手のサーバーに触らずに、配信だけを見たい日がある。**
+
+    毎朝のほうは取りに行ったあとにしか配信を見ない。だから
+
+        相手のサーバーが落ちて偵察で止まった日   配信を見ないまま終わる
+        site_url を入れる前に確かめたい日         毎朝を回すと相手に触る
+    """
+
+    def find(self):
+        控え = os.path.join(ROOT, "scripts", "public-haishin-workflow.yml")
+        if os.path.exists(控え):
+            return 控え
+        for path in workflows():
+            if "check_haishin.py" in read(path) and "RAW_DEPLOY_KEY" not in read(path):
+                return path
+        return None
+
+    def setUp(self):
+        self.P = self.find()
+        if self.P is None:
+            self.skipTest("手で押す配信の確認がまだ無い")
+        self.text = read(self.P)
+        self.body = "\n".join(l for l in self.text.splitlines()
+                                if not l.lstrip().startswith("#"))
+
+    def test_自分で走り出さない(self):
+        """**毎朝の分は毎朝のほうが見る。** 勝手に走ると同じものを2回見る。"""
+        self.assertNotIn("schedule", self.body)
+        self.assertNotIn("cron", self.body)
+        self.assertIn("workflow_dispatch", self.body)
+
+    def test_名前による自己停止がある(self):
+        """**逃げ道を1つも作らない。**
+
+        ここは外に出るだけで金庫には触らないが、
+        「ここは触らないから要らない」を1回許すと、次に同じ理由が使われる。
+        """
+        self.assertIsNotNone(step_body(self.text, STEP))
+
+    def test_入口を引数で渡せる(self):
+        """**確かめてから site_url を入れる**のが順番。
+
+        site.json に入れないと確かめられない作りにすると、順番が逆になる。
+        """
+        self.assertIn("inputs", self.body)
+        self.assertIn("check_haishin.py", self.body)
+
+    def test_金庫に書き込まない(self):
+        """見るだけ。**押せる手は、できることを小さくしておく。**"""
+        self.assertNotIn("RAW_DEPLOY_KEY", self.body)
+        self.assertIn("contents: read", self.body)
+
+    def test_公開用の木に入る(self):
+        """入れ忘れると、**押す手が公開用に無い**まま気づけない。
+
+        許可リストは金庫にしかない（`make_public_tree.py` は公開用の木に
+        入れない。入れると公開側から「何を外したか」が読めてしまう）。
+        **だから公開用では skip する。金庫では走る。**
+        """
+        try:
+            import scripts.make_public_tree as m
+        except ImportError:
+            self.skipTest("許可リストは金庫にしかない（公開用では、これが正しい）")
+        self.assertIn("scripts/public-haishin-workflow.yml", m.RENAME)
+        self.assertIn("scripts/check_haishin.py", m.FILES)
 
 
 if __name__ == "__main__":
