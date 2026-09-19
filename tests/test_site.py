@@ -444,10 +444,59 @@ class 設定が読めない日は止まる(unittest.TestCase):
             m.PATH = keep
 
     def test_既定値に名前を持たせない(self):
-        """既定値に名前を書くと、読めなかった日にその名前で名乗る。"""
-        self.assertEqual(m_default()["site_id"], "")
-        self.assertEqual(m_default()["id_prefix"], "")
-        self.assertEqual(m_default()["ua_label"], "")
+        """既定値に名前を書くと、欄が消えた日にその名前で名乗る。
+
+        **2026-09-19 まで2つ残っていた**（`bot_name` と `operator`）。
+        `common/site.py` の注記は「名前を持たせない」と書いてあったのに、
+        コードはそうなっていなかった。`bot_name` は**相手のサーバーに届く
+        名乗り**そのもので、site.json から欄が消えても補われて動きつづける。
+        **動くので誰も気づかない。**
+
+        ここは**1つずつ名指ししない**。名指しだと、次に足した欄を書き忘れる。
+        **全部の欄が空であることを見る。**
+        """
+        for k, v in m_default().items():
+            self.assertEqual(v, "", "既定値に %s が入っている（%r）" % (k, v))
+
+    def test_名乗りの欄が無ければ止まる(self):
+        """**空のまま外に出る**より**今日は取りに行かない**（正本 3.4）。"""
+        import json as _json
+        import tempfile
+        import common.site as m
+        いまの = raw()
+        for 抜く in ("site_id", "bot_name", "contact_url", "operator"):
+            d = {k: v for k, v in いまの.items() if k != 抜く}
+            path = os.path.join(tempfile.mkdtemp(), "site.json")
+            with open(path, "w", encoding="utf-8") as f:
+                _json.dump(d, f, ensure_ascii=False)
+            keep = m.PATH
+            m.PATH = path
+            try:
+                with self.assertRaises(RuntimeError, msg=抜く):
+                    m._load()
+            finally:
+                m.PATH = keep
+
+    def test_違ってよいものがどこにあるかを書いてある(self):
+        """正本 11節「**同じでない理由をそのサイトに書く**」。
+
+        ここには指紋の仕組みが無い（`MANIFEST.txt` も `DIFFERENCES` も無い）。
+        代わりに、サイトごとに違う値は**コードではなくデータ**に置いてある。
+        **その形そのものを書いておく。**
+        """
+        path = os.path.join(ROOT, "DESIGN.md")
+        if not os.path.exists(path):
+            self.skipTest("DESIGN.md がここには無い")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn("サイトごとに違ってよいもの", text)
+        for 語 in ("common/site.json", "共通のコードは1文字も変わらない"):
+            self.assertIn(語, text, 語)
+
+    def test_名乗りは欄が揃っていれば作れる(self):
+        """**止まる側だけ見ない。** 通るほうも見ないと、全部止める形でも通る。"""
+        self.assertIn(raw()["bot_name"], site.user_agent())
+        self.assertIn(raw()["contact_url"], site.user_agent())
 
 
 def m_default():

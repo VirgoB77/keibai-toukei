@@ -23,19 +23,29 @@ import os
 HERE = os.path.dirname(os.path.abspath(__file__))
 PATH = os.path.join(HERE, "site.json")
 
-# **名前を持たせない。** ここに名前を書くと、site.json が読めなかった日に
+# **名前を持たせない。** ここに名前を書くと、site.json にその欄が無い日に
 # 黙ってその名前で外に名乗ることになる。名前の正は site.json の1か所だけ。
+#
+# **2026-09-19 まで、ここに2つ名前が残っていた**（`bot_name` と `operator`）。
+# 上にそう書いてあるのに、コードはそうなっていなかった。
+# `bot_name` は**相手のサーバーに届く名乗り**そのもので、
+# site.json から欄が消えても、ここから補われて動きつづける。
+# 動くので誰も気づかない。**書いてある規則のほうを本当にした。**
 _DEFAULT = {
-    "bot_name": "kujiraya archive bot",
+    "bot_name": "",
     "site_id": "",
     "id_prefix": "",
     "ua_label": "",
     "contact_url": "",
     "about_url": "",
-    "operator": "鯨屋（くじらや）",
+    "operator": "",
     "operator_note": "",
     "contact_note": "",
 }
+
+# **無ければ止まる欄。** 外に出ていく名乗りと、人が名乗る運営者。
+# 「空のまま外に出る」より「今日は取りに行かない」ほうがよい（正本 3.4）
+_要る = ("site_id", "bot_name", "contact_url", "operator")
 
 
 def _load():
@@ -61,8 +71,13 @@ def _load():
             "**古い名前で名乗るより、止まるほうがよい**（正本 3.4）" % e)
     out = dict(_DEFAULT)
     out.update({k: v for k, v in d.items() if not k.startswith("_")})
-    if not out["site_id"]:
-        raise RuntimeError("common/site.json に site_id が無い")
+    欠け = [k for k in _要る if not out.get(k)]
+    if 欠け:
+        raise RuntimeError(
+            "common/site.json に %s が無い。"
+            "名乗りが作れないので、今日は取りに行かない。"
+            "**既定値から補わない**（補うと、欄が消えた日に"
+            "古い名前で外に出ていく）" % "・".join(欠け))
     return out
 
 
