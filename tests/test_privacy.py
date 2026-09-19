@@ -166,6 +166,12 @@ class 小さい母数(unittest.TestCase):
         食い違う。
         """
         self.assertFalse(privacy.suppress_rate(0, 10000))
+        # **人口が0なら、0件でも伏せる**（2026-09-19 に足した。3段の1段目）。
+        # 率そのものが定義できない。0では割れない。
+        # 姉妹サイトは、この1段目が無いまま0件を通してゼロ除算した
+        self.assertTrue(privacy.suppress_rate(0, 0))
+        self.assertTrue(privacy.suppress_rate(1, 0))
+        self.assertTrue(privacy.suppress_rate(0, -1))
         # **人口の小ささも0件には効かない**（2026-09-19 に直した）。
         # 前はここが assertTrue で、**違反のほうを期待値に固定していた。**
         # docstring は「0件は戻るものが無い」と正しく書いてあったのに、
@@ -436,6 +442,8 @@ class 正本5節の署名(unittest.TestCase):
         self.assertTrue(privacy.suppress_rate(1, 1000))
         self.assertTrue(privacy.suppress_rate(2, 1000))
         self.assertFalse(privacy.suppress_rate(3, 1000))
+        # **順番が要る。3段。** 入れ替えると、どれかが逆を向く
+        self.assertTrue(privacy.suppress_rate(0, 0))      # 1段目が勝つ
         # **人口が小さくても、0件は伏せない。** 戻る先が無い
         self.assertFalse(privacy.suppress_rate(0, 499))
         # 人口の条件は、件数が1件以上のときだけ効く

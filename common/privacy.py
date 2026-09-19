@@ -450,16 +450,27 @@ def suppress_rate(count, population):
     「0件はいちばん薄い階級の色」と食い違う。
     件数の側で一度直した不具合が、人口の小さい升だけでもう一度起きていた。
 
-    **条件を2つ並べるときは、どちらを先に見るかも決める**（正本 3.2）。
-    ここは **0件を先に見る**。
+    **条件を並べるときは、どれを先に見るかも決める**（正本 3.2）。
+    ここは **3段。2段ではない**（2026-09-19 に正本が足した）。
+
+        1. 人口が0        True。**率そのものが定義できない**（0では割れない）
+        2. 0件            False。率も 0 を出す
+        3. 小人口・1〜2件  True
+
+    1段目が抜けていると、2段目で0件を通したあとに **0で割る**。
+    姉妹サイト（街頭窃盗統計）が実データで踏んだ。人口0の町丁目が54件あった。
+    こちらは率を出していないので割り算は起きないが、
+    **署名をそろえている以上、返す値もそろえる**（正本 5節）。
     """
     try:
         count = int(count)
         population = int(population)
     except (TypeError, ValueError):
         return True
+    if population <= 0:
+        return True                       # **いちばん先。** 0では割れない
     if count == 0:
-        return False                      # **先に見る。** 戻る先が無い
+        return False                      # 次。戻る先が無い
     return population < MIN_POPULATION or count <= RATE_SMALL
 
 
