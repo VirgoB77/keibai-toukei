@@ -127,6 +127,41 @@ def decide_charset(raw, content_type):
     return "utf-8"
 
 
+# 圧縮されたまま返ってきた本文を、**文字として読まない**（2026-09-19）。
+#
+# `urllib` は `Accept-Encoding` を自分からは付けないし、付いていても
+# **中身をほどかない**。相手が勝手に圧縮して返すと `r.read()` は圧縮のバイトになる。
+# それを `to_text()` に通すと、どの文字コードでも読めないので
+# 最後の `decode("utf-8", "replace")` に落ちて**全部が置換文字になる。**
+#
+# バイトを残してあれば後から戻せる。**先に文字にしてしまうと戻せない。**
+# 姉妹サイトが実物で踏んだ（wayback から取るところだけ文字にしていて、
+# gzip の回の5枚が戻らない形で壊れた）。
+_ATSUSHUKU = (
+    (b"\x1f\x8b", "gzip"),
+    (b"BZh", "bzip2"),
+    (b"PK\x03\x04", "zip"),
+    (b"\xfd7zXZ", "xz"),
+    (b"(\xb5/\xfd", "zstd"),
+    (b"\x04\x22\x4d\x18", "lz4"),
+)
+
+
+def atsushuku(raw, header=""):
+    """圧縮されたまま返ってきたなら名前を返す。そうでなければ空文字。
+
+    **見出しと中身の両方を見る。** 見出しだけだと、付け忘れて返す
+    サーバーを見逃す。中身だけだと、知らない圧縮の形を見逃す。
+    """
+    h = (header or "").strip().lower()
+    if h and h != "identity":
+        return h
+    for magic, name in _ATSUSHUKU:
+        if (raw or b"").startswith(magic):
+            return name
+    return ""
+
+
 def to_text(raw, content_type):
     cs = decide_charset(raw, content_type)
     for enc in (cs, "utf-8", "cp932", "euc_jp"):
@@ -299,7 +334,16 @@ def _get_robots(scheme, host):
     try:
         req = urllib.request.Request(url, headers={"User-Agent": UA})
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-            body = r.read(20000).decode("utf-8", "replace")
+            # **バイトのまま受ける**（2026-09-19）。
+            # 前はここで `decode("utf-8", "replace")` していた。
+            # 役所のサーバーには Shift_JIS が残っているので、
+            # 日本語の注記が入った robots.txt は**その場で置換文字になり、
+            # そのまま保存されていた。** 戻せない。
+            # しかも Disallow の行は ASCII なので読み取りは通る。
+            # **壊れたことに、どこでも気づけない形だった。**
+            生 = r.read(20000)
+            ctype = r.headers.get("Content-Type", "")
+            cenc = r.headers.get("Content-Encoding", "")
             state = "ok"
     except urllib.error.HTTPError as e:
         state = "none" if e.code in (404, 410) else (
@@ -307,13 +351,24 @@ def _get_robots(scheme, host):
     except Exception:
         state = "unknown"
 
-    _ROBOTS_CACHE[key] = (body, state)
     if state == "ok":
+        # **読む前にしまう。** 頭の2行は控えなので別ファイルにせず、
+        # バイトの手前に足す（robots.txt 自体は `#` が注記なので混ざらない）
         d = os.path.join(HERE, "data", "raw", "_robots")
         os.makedirs(d, exist_ok=True)
-        with open(os.path.join(d, host + ".txt"), "w", encoding="utf-8") as f:
-            f.write("# 取得日: %s\n# %s\n" % (jst_today().isoformat(), url))
-            f.write(body)
+        with open(os.path.join(d, host + ".txt"), "wb") as f:
+            f.write(("# 取得日: %s\n# %s\n"
+                     % (jst_today().isoformat(), url)).encode("utf-8"))
+            f.write(生)
+        # 圧縮されたまま返ってきたら、読めない。**拒否とは混ぜない**
+        圧縮 = atsushuku(生, cenc)
+        if 圧縮:
+            body, state = "", "unknown"
+        else:
+            # 文字コードは入口のページと同じやり方で決める。
+            # `decode("utf-8", "replace")` に直行しない
+            body, _ = to_text(生, ctype)
+    _ROBOTS_CACHE[key] = (body, state)
     # 相手のサーバーに1本当てたので、次の1本まで間を空ける（正本 3.4）。
     # robots.txt も相手のサーバーへのリクエスト。数に入れる
     time.sleep(WAIT)
@@ -354,7 +409,10 @@ def fetch(url):
     })
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-            return r.status, r.headers.get("Content-Type", ""), r.read()
+            # **Content-Encoding も持って帰る。** urllib は中身をほどかない。
+            # 圧縮されたまま返ってきたことに、呼ぶ側が気づけるようにする
+            return (r.status, r.headers.get("Content-Type", ""), r.read(),
+                    r.headers.get("Content-Encoding", ""))
     except urllib.error.HTTPError as e:
         if e.code in BACK_OFF:
             # リトライで突破しない。今日はここまでにして、明日また来る
@@ -602,7 +660,7 @@ def recon_one(src, today, raw_dir, counts, blocked):
         return res
 
     try:
-        status, ctype, raw = fetch(src["url"])
+        status, ctype, raw, cenc = fetch(src["url"])
     except BackOff as e:
         res["fetch_error"] = str(e)
         res["back_off"] = True
@@ -630,18 +688,35 @@ def recon_one(src, today, raw_dir, counts, blocked):
         time.sleep(WAIT)
         return res
 
+    # **読む前にしまう**（正本 3.5「取り直せないものが先」・2026-09-19）。
+    # 前は `analyze()` のあとに書いていた。その朝のページは取り直せないのに、
+    # **読み取りで例外が出たら1枚も残らない**形だった。
+    # 生のまま残す。これがアーカイブの最初の1枚になる（再公開はしない）
+    d = os.path.join(raw_dir, src["id"])
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "%s.html" % today), "wb") as f:
+        f.write(raw)
+
+    # **圧縮されたまま返ってきたら、文字にしない。**
+    # バイトは上で残してあるので、あとから戻せる。
+    # ここで `to_text()` に通すと全部が置換文字になり、
+    # 「読めた」顔で「わからない」が積み上がる
+    圧縮 = atsushuku(raw, cenc)
+    if 圧縮:
+        res.update(status=status, bytes=len(raw))
+        res["fetch_error"] = (
+            "圧縮されたまま返ってきた（%s）。"
+            "バイトは残したが、中身は読んでいない" % 圧縮)
+        counts["失敗"] = counts.get("失敗", 0) + 1
+        time.sleep(WAIT)
+        return res
+
     text, enc = to_text(raw, ctype)
     res.update(status=status, encoding=enc, bytes=len(raw))
     res["analysis"] = analyze(text, src["url"], src)
     counts[res["analysis"]["verdict"]] = \
         counts.get(res["analysis"]["verdict"], 0) + 1
     blocked["santen_links"] += res["analysis"]["santen_count"]
-
-    # 生のまま残す。これがアーカイブの最初の1枚になる（再公開はしない）
-    d = os.path.join(raw_dir, src["id"])
-    os.makedirs(d, exist_ok=True)
-    with open(os.path.join(d, "%s.html" % today), "wb") as f:
-        f.write(raw)
 
     # 入口が目次だけのことが多い。表が無いページはその先を見に行く。
     # BIT では follow_links が必ず空を返すので、ここは動かない。
@@ -681,7 +756,7 @@ def recon_one(src, today, raw_dir, counts, blocked):
                 continue
             time.sleep(WAIT)
             try:
-                st2, ct2, raw2 = fetch(url2)
+                st2, ct2, raw2, ce2 = fetch(url2)
             except BackOff as e:
                 res["followed"].append((label, None, depth, str(e)))
                 res["back_off"] = True
@@ -696,11 +771,18 @@ def recon_one(src, today, raw_dir, counts, blocked):
                 blocked["bit_pdf"] += 1
                 res["followed"].append((label, None, depth, "BITのPDFを捨てた"))
                 continue
-            t2, _ = to_text(raw2, ct2)
-            a2 = analyze(t2, url2, src)
+            # 入口と同じ。**読む前にしまう。圧縮なら文字にしない**
             with open(os.path.join(d, "%s--%s.html" % (today, slug_of(url2))),
                       "wb") as f:
                 f.write(raw2)
+            圧縮2 = atsushuku(raw2, ce2)
+            if 圧縮2:
+                res["followed"].append(
+                    (label, None, depth,
+                     "圧縮されたまま返ってきた（%s）。読んでいない" % 圧縮2))
+                continue
+            t2, _ = to_text(raw2, ct2)
+            a2 = analyze(t2, url2, src)
             res["followed"].append((label, a2, depth, None))
             counts[a2["verdict"]] = counts.get(a2["verdict"], 0) + 1
             blocked["santen_links"] += a2["santen_count"]

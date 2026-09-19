@@ -268,5 +268,264 @@ class 保存する名前(unittest.TestCase):
         self.assertIsNone(re.search(r"[^A-Za-z0-9._-]", name), name)
 
 
+class 圧縮されたまま返ってきたとき(unittest.TestCase):
+    """**バイトを残す。文字にしない**（2026-09-19）。
+
+    `urllib` は `Accept-Encoding` を自分からは付けないし、付いていても
+    **中身をほどかない**。相手が勝手に圧縮して返すと `r.read()` は
+    圧縮のバイトになる。それを `to_text()` に通すと、どの文字コードでも
+    読めないので最後の `decode("utf-8", "replace")` に落ちて
+    **全部が置換文字になる。**
+
+    バイトを残してあれば後から戻せる。**先に文字にすると戻せない。**
+    姉妹サイトが実物で踏んだ（wayback から取るところだけ文字にしていて、
+    gzip の回の5枚が戻らない形で壊れた）。
+    """
+
+    def test_中身の頭で見分ける(self):
+        for 生, 名 in ((b"\x1f\x8b\x08\x00", "gzip"),
+                        (b"BZh91AY", "bzip2"),
+                        (b"PK\x03\x04", "zip"),
+                        (b"\xfd7zXZ\x00", "xz"),
+                        (b"(\xb5/\xfd", "zstd")):
+            self.assertEqual(recon.atsushuku(生), 名, 名)
+
+    def test_見出しでも見分ける(self):
+        """**付け忘れて返すサーバーがあるので、中身も見る。**
+
+        逆に、知らない圧縮の形もあるので見出しも見る。片方だけにしない。
+        """
+        self.assertEqual(recon.atsushuku(b"<html>", "gzip"), "gzip")
+        self.assertEqual(recon.atsushuku(b"<html>", "br"), "br")
+
+    def test_圧縮されていなければ空文字(self):
+        self.assertEqual(recon.atsushuku(b"<html><body>", ""), "")
+        self.assertEqual(recon.atsushuku(b"<html>", "identity"), "")
+        self.assertEqual(recon.atsushuku(b"", ""), "")
+        self.assertEqual(recon.atsushuku(b"<html>", "  IDENTITY  "), "")
+
+    def test_圧縮を文字にすると全部置換文字になることを覚えておく(self):
+        """**なぜバイトで残すのか**を、ここで1回見せておく。
+
+        戻せないことが分かっていれば、次に急いだ日も文字にしない。
+        """
+        import gzip
+        生 = gzip.compress("大阪市北区梅田1丁目".encode("utf-8"))
+        文字, enc = recon.to_text(生, "text/html")
+        self.assertEqual(enc, "utf-8(replace)")
+        self.assertIn("�", 文字)
+        # **文字から生には戻らない。** 保存が文字だと、ここで終わる
+        self.assertNotEqual(文字.encode("utf-8", "replace"), 生)
+        # バイトで残してあれば戻る
+        self.assertEqual(gzip.decompress(生).decode("utf-8"), "大阪市北区梅田1丁目")
+
+
+class 取りに行ったものを読む前にしまう(unittest.TestCase):
+    """**取り直せないものが先**（正本 3.5）。
+
+    前は `analyze()` のあとに書いていた。その朝のページは取り直せないのに、
+    **読み取りで例外が出たら1枚も残らない**形だった。
+    """
+
+    def 走らせる(self, 生, ctype="text/html", cenc="", 読めなくする=False):
+        import tempfile
+        d = tempfile.mkdtemp()
+        keep_fetch, keep_analyze = recon.fetch, recon.analyze
+        recon.fetch = lambda url: (200, ctype, 生, cenc)
+        if 読めなくする:
+            def 落ちる(*a, **k):
+                raise ValueError("読み取りでわざと落とす")
+            recon.analyze = 落ちる
+        src = {"id": "test-src", "url": "https://example.test/a",
+               "name": "試験", "system": "keibai"}
+        keep_robots = recon.check_robots
+        recon.check_robots = lambda url: (True, "許可", "")
+        keep_wait = recon.WAIT
+        recon.WAIT = 0
+        try:
+            res, err = None, None
+            try:
+                res = recon.recon_one(
+                    src, "2026-09-19", d, {},
+                    {"bit_pdf": 0, "santen_links": 0})   # main() と同じ形
+            except Exception as e:                      # noqa: BLE001
+                err = e
+            置いた = []
+            for cur, _dirs, files in os.walk(d):
+                for f in files:
+                    with open(os.path.join(cur, f), "rb") as fh:
+                        置いた.append(fh.read())
+            return res, err, 置いた
+        finally:
+            recon.fetch, recon.analyze = keep_fetch, keep_analyze
+            recon.check_robots = keep_robots
+            recon.WAIT = keep_wait
+
+    def test_読み取りで落ちてもバイトは残る(self):
+        """**ここが本体。** 落ちる日に、その朝のページを失わない。"""
+        生 = b"<html><body>\xe5\xa4\xa7\xe9\x98\xaa</body></html>"
+        res, err, 置いた = self.走らせる(生, 読めなくする=True)
+        self.assertIsNotNone(err, "わざと落としたのに落ちていない")
+        self.assertIn(生, 置いた, "落ちたときにバイトが残っていない")
+
+    def test_圧縮されていたら_バイトは残して中身は読まない(self):
+        import gzip
+        生 = gzip.compress(b"<html>x</html>")
+        res, err, 置いた = self.走らせる(生, cenc="gzip")
+        self.assertIsNone(err)
+        self.assertIn(生, 置いた, "圧縮でもバイトは残すこと")
+        self.assertIn("圧縮", res.get("fetch_error", ""))
+        self.assertNotIn("analysis", res,
+                         "読めていないのに読んだ顔をしている")
+
+    def test_ふつうのページは今までどおり読む(self):
+        生 = b"<html><body><table><tr><td>1</td></tr></table></body></html>"
+        res, err, 置いた = self.走らせる(生)
+        self.assertIsNone(err)
+        self.assertIn(生, 置いた)
+        self.assertIn("analysis", res)
+
+
+class 保存したものが壊れていないか(unittest.TestCase):
+    """**置いてあるものを、そのまま数える。**
+
+    仕掛けの検査ではなく、**実物の検査**。書き方をどう直しても、
+    壊れたものが1枚でも入ったらここで鳴る。
+    """
+
+    def 生データ(self):
+        import glob
+        out = []
+        for top in ("data/raw", "inbox"):
+            d = os.path.join(ROOT, top)
+            if not os.path.isdir(d):
+                continue
+            for p in glob.glob(os.path.join(d, "**", "*"), recursive=True):
+                if os.path.isfile(p):
+                    out.append(p)
+        return out
+
+    def setUp(self):
+        self.files = self.生データ()
+        if not self.files:
+            self.skipTest("生データがここには無い（公開用では、これが正しい）")
+
+    def test_圧縮されたまま置かれていない(self):
+        見つけた = []
+        for p in self.files:
+            with open(p, "rb") as f:
+                頭 = f.read(8)
+            名 = recon.atsushuku(頭)
+            if 名:
+                見つけた.append("%s（%s）" % (os.path.relpath(p, ROOT), 名))
+        self.assertEqual(見つけた, [], "圧縮されたまま置かれている")
+
+    def test_置換文字が混ざっていない(self):
+        """**文字にしてから保存した跡。** 1つ入ったら、そこは戻せない。"""
+        見つけた = []
+        for p in self.files:
+            with open(p, "rb") as f:
+                b = f.read()
+            n = b.count("�".encode("utf-8"))
+            if n:
+                見つけた.append("%s（%d個）" % (os.path.relpath(p, ROOT), n))
+        self.assertEqual(見つけた, [], "置換文字が混ざっている")
+
+
+class robots_txtもバイトで残す(unittest.TestCase):
+    """**役所のサーバーには Shift_JIS が残っている**（2026-09-19）。
+
+    前はここで `decode("utf-8", "replace")` してから保存していた。
+    日本語の注記が入った robots.txt は**その場で置換文字になり、
+    そのまま保存されていた。戻せない。**
+
+    しかも `Disallow` の行は ASCII なので読み取りは通る。
+    **壊れたことに、どこでも気づけない形だった。**
+
+    robots.txt は毎日取り直せるが、**その日に何と書いてあったか**の控えは
+    取り直せない。相手が書き換えたら、こちらの控えが唯一の記録になる。
+    """
+
+    def 取らせる(self, 生, ctype="text/plain", cenc=""):
+        import tempfile
+        import urllib.request
+
+        class _返す:
+            headers = {"Content-Type": ctype, "Content-Encoding": cenc}
+
+            def read(self, n=None):
+                return 生
+
+            def __enter__(self):
+                self.headers = type(self).返す見出し()
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            @staticmethod
+            def 返す見出し():
+                class H(dict):
+                    def get(self, k, d=""):
+                        return dict.get(self, k, d)
+                return H({"Content-Type": ctype, "Content-Encoding": cenc})
+
+        d = tempfile.mkdtemp()
+        keep = (urllib.request.urlopen, recon.HERE, recon.WAIT,
+                dict(recon._ROBOTS_CACHE))
+        urllib.request.urlopen = lambda *a, **k: _返す()
+        recon.HERE = d
+        recon.WAIT = 0
+        recon._ROBOTS_CACHE.clear()
+        try:
+            body, state = recon._get_robots("https", "example.test")
+            path = os.path.join(d, "data", "raw", "_robots", "example.test.txt")
+            置いた = b""
+            if os.path.exists(path):
+                with open(path, "rb") as f:
+                    置いた = f.read()
+            return body, state, 置いた
+        finally:
+            (urllib.request.urlopen, recon.HERE, recon.WAIT) = keep[:3]
+            recon._ROBOTS_CACHE.clear()
+            recon._ROBOTS_CACHE.update(keep[3])
+
+    def test_ShiftJISの注記が壊れずに残る(self):
+        注記 = "# 競売情報サイト\nUser-agent: *\nDisallow: /app/\n"
+        生 = 注記.encode("cp932")
+        body, state, 置いた = self.取らせる(生)
+        self.assertEqual(state, "ok")
+        # **バイトがそのまま入っていること。** ここが本体
+        self.assertIn(生, 置いた, "保存したものが生のバイトではない")
+        self.assertNotIn("�".encode("utf-8"), 置いた,
+                         "保存したものに置換文字が入っている")
+        # 読むほうは、文字コードを当てて読めていること
+        self.assertIn("競売情報サイト", body)
+        self.assertIn("Disallow: /app/", body)
+
+    def test_UTF8のときも今までどおり読める(self):
+        生 = "# こんにちは\nUser-agent: *\nAllow: /\n".encode("utf-8")
+        body, state, 置いた = self.取らせる(生, ctype="text/plain; charset=utf-8")
+        self.assertEqual(state, "ok")
+        self.assertIn(生, 置いた)
+        self.assertIn("こんにちは", body)
+
+    def test_圧縮されていたら_読めないとして扱う(self):
+        """**拒否とは混ぜない。** 読めないのであって、断られたのではない。"""
+        import gzip
+        生 = gzip.compress(b"User-agent: *\nDisallow: /\n")
+        body, state, 置いた = self.取らせる(生, cenc="gzip")
+        self.assertIn(生, 置いた, "圧縮でもバイトは残すこと")
+        self.assertEqual(body, "")
+        self.assertEqual(state, "unknown",
+                         "読めなかったものを ok や 拒否 にしない")
+
+    def test_取得日と出どころを頭に控える(self):
+        生 = b"User-agent: *\nDisallow: /x/\n"
+        _body, _state, 置いた = self.取らせる(生)
+        頭 = 置いた.split(生)[0].decode("utf-8")
+        self.assertIn("# 取得日:", 頭)
+        self.assertIn("https://example.test/robots.txt", 頭)
+
 if __name__ == "__main__":
     unittest.main()
