@@ -369,7 +369,15 @@ class 道具2つが同じ木を見ている(unittest.TestCase):
 
     def test_check_copyが見る木は公開する木に収まっている(self):
         import check_copy
-        import make_public_tree as tree
+        try:
+            import make_public_tree as tree
+        except ImportError:
+            # **木を作る道具は金庫にだけ置く**（自分でそう名乗っている）。
+            # 公開用の木には行かないので、そこでは比べようがない。
+            # 落とすと、公開用の Actions が取りに行く前に止まる
+            self.skipTest(
+                "make_public_tree.py が無い。公開用の木を素で clone した"
+                "ときは、これが正しい（木を作る道具は金庫にだけ置く）")
         見る = {rel for rel, _ in check_copy.walk(check_copy.HERE)}
         出す = set(tree.FILES)
         for top in tree.DIRS:
