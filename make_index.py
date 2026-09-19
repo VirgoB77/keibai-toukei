@@ -45,10 +45,8 @@ sys.path.insert(0, HERE)
 from aggregate import FAMILIES, INDEX_FIELDS  # noqa: E402
 from aggregate import aggregate as make_cells  # noqa: E402
 from aggregate import stage_of  # noqa: E402
-from aggregate import unresolved as aggregate_unresolved  # noqa: E402
-from aggregate import undecided as aggregate_undecided  # noqa: E402
-from aggregate import gone as aggregate_gone  # noqa: E402
 from aggregate import YUKUE_KEY, yukue, kazu_ga_au  # noqa: E402
+from aggregate import write_kazu  # noqa: E402
 from common import privacy  # noqa: E402
 from common import report  # noqa: E402
 from common import site  # noqa: E402
@@ -278,8 +276,17 @@ def build(rows, today=None):
     # 畳むところで落ちても、あちらは気づかない。
     # 市区町村コードで絞る前の `everything` で見る（絞ったあとだと、
     # 落ちた升のぶんだけ子の合計が親に足りなくなる）。
-    kazu = kazu_ga_au(rows, everything, today)
+    # **升の母集団は `counted`**（個票に出した行は升から外してある）。
+    # `rows` と比べると、個票が1件出た瞬間に誤報で止まる
+    # （正本 9節「誤報を出す見張りは、そのうち誰も見なくなる」）。
+    # 行方（①）は全行、升との突き合わせ（③）は counted で見る
+    kazu = kazu_ga_au(rows, everything, today, cell_rows=counted)
     if kazu["食い違い"]:
+        # **落ちた日も、何が起きたかを残す**（2026-09-19）。
+        # 前はここで素の例外を投げるだけだったので、
+        # `data/parse-unknown.md` には aggregate.py が書いた
+        # 「合っている」がそのまま残り、`if: always()` で commit された
+        write_kazu(rows, everything, today, cell_rows=counted)
         raise RuntimeError(
             "数が合わない。黙って落としている。\n  "
             + "\n  ".join(kazu["食い違い"]))

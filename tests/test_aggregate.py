@@ -10,7 +10,9 @@
 
 import io
 import os
+import shutil
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -476,30 +478,62 @@ class 取下げと繰り越しは別物(unittest.TestCase):
         for c in cells:
             self.assertNotIn("取下", c["stage"])
 
-    def test_3つの箱は重ならない(self):
-        """1つの行が2つの箱に入ると、足したときに数が合わなくなる。"""
+    def test_3つの述語は重なりうる(self):
+        """**述語どうしは排他ではない。** だから `yukue()` が1つに決める。
+
+        前はここで「3つの箱は重ならない」と書いていたが、
+        **重なる行を1つも渡していなかった**ので、いつでも通っていた。
+        同じファイルの `test_not_countedの3つは行方から作る` が
+        「取下げ かつ 消えた」を非排他の実例として使っているのに、
+        こちらは「重ならない」と名乗っていた。**指した先と逆。**
+        """
+        r = 行(status="取下げ", gone_on="2026-09-18", open_date="2026-09-01")
+        self.assertTrue(aggregate.gone(r))
+        self.assertTrue(aggregate.undecided(r))
+        self.assertEqual(aggregate.yukue(r, today="2026-09-19"), "取下げ",
+                         "重なっても、行方は1つに決まらなければならない")
+
+    def test_行方は必ず1つに決まる(self):
+        """**重なっても足すと行の数になる。** それを担保するのは yukue()。"""
         rows = [self.消えた(),
                 行(status="取下げ", open_date="2026-09-01"),
+                行(status="取下げ", gone_on="2026-09-18"),
                 行(status="執行停止", open_date="2026-09-01"),
                 行(status="売却", open_date="2026-09-01")]
         for r in rows:
-            n = sum((aggregate.gone(r),
-                     aggregate.unresolved(r, today="2026-09-19"),
-                     aggregate.undecided(r)))
-            self.assertLessEqual(n, 1, "%r が2つの箱に入っている" % r.get("status"))
+            self.assertIn(aggregate.yukue(r, today="2026-09-19"),
+                          aggregate.YUKUE, r.get("status"))
+        d = aggregate.kazu_ga_au(rows, today="2026-09-19")
+        # 合計＝行の数は恒真。**どの行方に何件入ったか**を見る
+        self.assertEqual(sum(d["行方"].values()), len(rows))
+        self.assertEqual(d["行方"].get("取下げ"), 2, d["行方"])
+        self.assertEqual(d["行方"].get("消えた"), 1, d["行方"])
 
     def test_再登場を追える形で残している(self):
         """`property_key` に開札日を入れない。
 
         入れると、同じ物件が期間をまたいだときに別の鍵になり、
         **繰り越しを追えなくなる**（正本 9節「鍵にはあとから変わらないものだけ」）。
+
+        **前はここで `行()` の作り物を見ていた。** `行()` は
+        `property_key` を持たないので、空文字と比べるだけの検査で、
+        `parse.py` を壊しても鳴らなかった。**実物の作り方を見る。**
         """
-        import parse
-        key = parse.property_key_of if hasattr(parse, "property_key_of") else None
-        row = 行()
-        pk = row.get("property_key") or ""
-        self.assertNotIn(row.get("open_date") or "@@", pk,
-                         "property_key に開札日が入っている")
+        import io as _io
+        import os as _os
+        import re as _re
+        here = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+        with _io.open(_os.path.join(here, "parse.py"), encoding="utf-8") as f:
+            src = f.read()
+        m = _re.search(r'row\["property_key"\] = (.+)', src)
+        self.assertIsNotNone(m, "property_key を作っている行が見つからない")
+        作り方 = m.group(1)
+        for ng in ("open_date", "bid_end", "last_seen", "date"):
+            self.assertNotIn(ng, 作り方,
+                             "property_key に %s が入っている: %s"
+                             % (ng, 作り方))
+        # key のほうには入ってよい（回ごとの鍵）。両方が同じでは困る
+        self.assertIn('row["key"]', src)
 
 
 class 足したときに数が合うこと(unittest.TestCase):
@@ -535,7 +569,9 @@ class 足したときに数が合うこと(unittest.TestCase):
                 行(status="", first_seen="2026-09-01",
                   open_date="2099-01-01")]
         d = aggregate.kazu_ga_au(rows, today="2026-10-20")
-        self.assertEqual(sum(d["行方"].values()), len(rows))
+        # **合計＝行の数は恒真**（`yukue()` が必ず1つ返すので）。
+        # 恒真を assert しても何も確かめていないので、**中身**を見る
+        self.assertEqual(d["行方"], {"落札": 1, "取下げ": 1, "待ち": 1})
         self.assertEqual(d["食い違い"], [])
 
     def test_升が1つもできない行を拾う(self):
@@ -602,6 +638,53 @@ class 足したときに数が合うこと(unittest.TestCase):
         self.assertTrue(d["食い違い"],
                         "全体では合うが升ごとには合わない形を拾えていない")
         self.assertEqual(len(d["内訳"]), 2, d["内訳"])
+
+    def test_升がまとまりごと消えても拾う(self):
+        """**①②のどちらにも掛からない形。** ③（行と升の突き合わせ）だけが拾う。
+
+        ある市の升が親も子も一緒に消えると、そのまとまりが現れないだけで
+        `check_sums` は何も言わない。実測（2026-09-19）では
+        1つの市の升を落としても通り、`counts_by_city` が 92 → 90 に減って
+        **その市が丸ごと公開データから消えたまま出た。**
+        """
+        rows = [行(status="売却", first_seen="2026-09-01",
+                  open_date="2026-09-10"),
+                行(status="売却", first_seen="2026-09-01",
+                  open_date="2026-09-10", city="尼崎市",
+                  city_code="28202", case_no="別")]
+        cells = aggregate.aggregate(rows, with_raw=True)
+        self.assertEqual(
+            aggregate.kazu_ga_au(rows, cells, today="2026-09-19")["食い違い"],
+            [], "壊す前から鳴っている")
+
+        # 尼崎市の升を**親も子も丸ごと**落とす
+        残り = [c for c in cells if c.get("city") != "尼崎市"]
+        self.assertLess(len(残り), len(cells))
+        # 残った升だけで見れば、親子の足し算は合っている
+        for axes in {aggregate.cell_axes(c) for c in 残り}:
+            t = {c["stage"]: c["_n"] for c in 残り
+                 if aggregate.cell_axes(c) == axes}
+            self.assertEqual(aggregate.FAMILIES.check_sums(t), [],
+                             "残った升の中に食い違いがある（③以外が拾ってしまう）")
+
+        d = aggregate.kazu_ga_au(rows, 残り, today="2026-09-19")
+        self.assertTrue(any("まとまりごと" in b for b in d["食い違い"]),
+                        d["食い違い"])
+
+    def test_親を落としたあとの升を渡したら止める(self):
+        """**`_n` には門番があるのに、親欠けには無かった。**
+
+        親を落としたあとの升を渡すと、`check_sums` が全まとまりを
+        「出ていない升」として飛ばし、**検査が丸ごと消える。**
+        """
+        rows = [行(status="売却", first_seen="2026-09-01",
+                  open_date="2026-09-10")]
+        cells = aggregate.aggregate(rows, with_raw=True)
+        子だけ = [c for c in cells
+                if not aggregate.FAMILIES.is_parent(c["stage"])]
+        d = aggregate.kazu_ga_au(rows, 子だけ, today="2026-09-19")
+        self.assertTrue(any("親の升が無いのに子がある" in b
+                            for b in d["食い違い"]), d["食い違い"])
 
     def test_実数の無い升を渡したら黙って通さない(self):
         """`_n` が無いと②は見られない。**飛ばさずに落とす。**"""
@@ -743,6 +826,125 @@ class 実数を出力に残さない(unittest.TestCase):
                          "%s に実数が残っている" % aggregate.OUT_PATH)
         for cell in json.loads(text)["cells"]:
             self.assertNotIn("_n", cell)
+
+
+class 登録していない段階を升に出さない(unittest.TestCase):
+    """**接頭辞を持たない子は、登録忘れの網に1つも掛からない**（2026-09-19）。
+
+    `undeclared()` は「-」を含む名前しか拾えない。
+    `落札` のような接頭辞なしの段階を `events()` に足して
+    `FAMILIES` への登録を忘れると、どの見張りにも掛からずに
+    `counts_by_city` に出る。**取下げを結果に足す、がまさにこの形。**
+    """
+
+    def test_知らない段階が升に出たら鳴る(self):
+        rows = [行(status="売却", first_seen="2026-09-01",
+                  open_date="2026-09-10")]
+        cells = aggregate.aggregate(rows, with_raw=True)
+        self.assertEqual(
+            aggregate.kazu_ga_au(rows, cells, today="2026-09-19")["食い違い"],
+            [], "壊す前から鳴っている")
+        にせ = cells + [dict(cells[0], stage="取下げ", _n=1)]
+        d = aggregate.kazu_ga_au(rows, にせ, today="2026-09-19")
+        self.assertTrue(any("登録されていない段階" in b for b in d["食い違い"]),
+                        d["食い違い"])
+
+    def test_いま出している段階は全部登録されている(self):
+        rows = [行(status="売却", first_seen="2026-09-01",
+                  open_date="2026-09-10"),
+                行(status="不売", first_seen="2026-09-01",
+                  open_date="2026-09-10", case_no="別"),
+                行(status="", first_seen="2026-09-01", re_notice=True,
+                  case_no="別2")]
+        登録 = set(aggregate.FAMILIES.parents) | set(aggregate.FAMILIES.children)
+        for c in aggregate.aggregate(rows, with_raw=True):
+            self.assertIn(c["stage"], 登録)
+
+
+class 合わない日は止まる(unittest.TestCase):
+    """**「合わなければ落とす」を、実際に落として確かめる**（2026-09-19）。
+
+    `write_kazu()` の `RuntimeError` は、テストから**一度も通っていなかった**
+    （sys.settrace で数えたら def 行すら0回）。
+    検査ごと消しても428本が緑のままだった。
+    """
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        self.keep = aggregate.UNKNOWN_PATH
+        aggregate.UNKNOWN_PATH = os.path.join(self.d, "parse-unknown.md")
+
+    def tearDown(self):
+        aggregate.UNKNOWN_PATH = self.keep
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def test_合っていれば通って章が残る(self):
+        rows = [行(status="売却", first_seen="2026-09-01",
+                  open_date="2026-09-10")]
+        d = aggregate.write_kazu(rows, aggregate.aggregate(rows, with_raw=True),
+                                 today="2026-09-19")
+        self.assertEqual(d["食い違い"], [])
+        with io.open(aggregate.UNKNOWN_PATH, encoding="utf-8") as f:
+            self.assertIn("数が合うこと", f.read())
+
+    def test_合わなければ落ちる(self):
+        rows = [行(status="売却", first_seen="2026-09-01",
+                  open_date="2026-09-10")]
+        cells = aggregate.aggregate(rows, with_raw=True)
+        [c for c in cells if c["stage"] == "落札"][0]["_n"] += 5
+        with self.assertRaises(RuntimeError):
+            aggregate.write_kazu(rows, cells, today="2026-09-19")
+
+    def test_落ちた日も章に理由が残る(self):
+        """**落ちたことが、あとから読める形で残る。**
+
+        `put_chapter` を先に呼んでから投げる。落ちた日に
+        「合っている」が残ると、履歴に嘘が入る。
+        """
+        rows = [行(status="売却", first_seen="2026-09-01",
+                  open_date="2026-09-10")]
+        cells = aggregate.aggregate(rows, with_raw=True)
+        [c for c in cells if c["stage"] == "落札"][0]["_n"] += 5
+        try:
+            aggregate.write_kazu(rows, cells, today="2026-09-19")
+        except RuntimeError:
+            pass
+        with io.open(aggregate.UNKNOWN_PATH, encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn("**合っていない。**", text)
+
+
+class not_countedが非0になる道(unittest.TestCase):
+    """**3つの欄が非0になる経路を、どのテストも通っていなかった。**
+
+    `YUKUE_KEY` から欄を1つ落としても428本が緑のままだった。
+    正本6節が名前を決めた3つなので、**非0になる道を固定する。**
+    """
+
+    def test_3つとも非0にできる(self):
+        import make_index
+        rows = [行(status="取下げ", first_seen="2026-09-01"),
+                行(status="", first_seen="2026-09-01", gone_on="2026-09-18",
+                  case_no="別"),
+                行(status="よく分からない語", first_seen="2026-09-01",
+                  open_date="2026-09-01", case_no="別2")]
+        got = make_index.not_counted(rows, today="2026-09-19")
+        self.assertEqual(got, {"unresolved": 1, "undecided": 1, "gone": 1})
+
+    def test_欄を落としたら合計が行と合わなくなる(self):
+        """**欄が1つ落ちると、3つの合計が行方の数と合わない。**"""
+        import make_index
+        rows = [行(status="取下げ", first_seen="2026-09-01"),
+                行(status="", first_seen="2026-09-01", gone_on="2026-09-18",
+                  case_no="別"),
+                行(status="謎", first_seen="2026-09-01",
+                  open_date="2026-09-01", case_no="別2")]
+        d = aggregate.kazu_ga_au(rows, today="2026-09-19")
+        欄 = make_index.not_counted(rows, today="2026-09-19")
+        行方 = sum(d["行方"].get(y, 0) for y in aggregate.YUKUE_KEY)
+        self.assertEqual(sum(欄.values()), 行方,
+                         "not_counted の欄と行方の数が合わない")
+        self.assertEqual(set(aggregate.YUKUE_KEY.values()), set(欄))
 
 
 if __name__ == "__main__":

@@ -11,7 +11,8 @@
     base_median    売却基準価額の中央値
     sale_median    売却価額の中央値
     ratio_median   落札率（売却価額 ÷ 売却基準価額）の中央値
-    unsold         不売・取消の件数
+    （`unsold` という欄は無い。**不調は升の段階として出す**
+     → `競売/不調`。取消は回の語なので升にしない）
 
 中央値にするのは、1件の高額物件で平均が壊れるため。
 不売・取消は、ほかがどこも出していない。ここが効く。
@@ -210,7 +211,7 @@ def events(row):
     """その回が、どの升にいくつ入るか。
 
     1つの回が2つ以上の升に入る。9月に公告されて10月に売れた回は、
-    9月の「公告」と10月の「売却」の両方に1ずつ入る。
+    9月の「公告」と10月の「落札」の両方に1ずつ入る。
     どちらも「その月に起きたこと」なので、二重計上ではない。
     """
     out = []
@@ -409,7 +410,7 @@ def cell_axes(cell):
                  if f != "stage" and f in cell)
 
 
-def kazu_ga_au(rows, cells=None, today=None):
+def kazu_ga_au(rows, cells=None, today=None, cell_rows=None):
     """**足したときに数が合うか。** 合わない中身を返す。
 
     `cells` を渡すと②（内訳の保存）も見る。渡さなければ①だけ。
@@ -432,6 +433,28 @@ def kazu_ga_au(rows, cells=None, today=None):
     親と子をちょうど1つずつ出すので、全体で足すと **親 ＝ 子の合計** が
     恒等的に成り立つ。市や月のどこで食い違っても、別の升の逆向きの
     食い違いと打ち消しあう。**升ごとに見る。**
+
+    ## ③ 行と升を突き合わせる（2026-09-19 に足した）
+
+    ①②だけでは、**升のまとまりが丸ごと消えても鳴らない。**
+    ①は行から `events()` を計算し直すだけで、**書き出した升に実際に
+    入ったか**を見ていない。②は「在る升」の親子しか見ないので、
+    ある市の升が親も子も一緒に消えると、そのまとまりが現れないだけで
+    何も言わない。
+
+    実測（2026-09-19）: 1つの市の升を落としても `食い違い: []` のまま通り、
+    `counts_by_city` が 92 → 90 に減って、**その市が丸ごと公開データから
+    消えたまま出た**。テスト428本も全部通った。
+
+    だから **子の升の実数の合計** と **行から数えた子の出来事** を比べる。
+
+    ## 母集団は `cell_rows` で渡す
+
+    `make_index` は個票に出した行を升から外す（`counted`）。
+    升を作った母集団と、行方を数える母集団が違う。
+    **同じ `rows` で比べると、個票が1件出た瞬間に誤報で止まる**
+    （正本 9節「誤報を出す見張りは、そのうち誰も見なくなる」）。
+    `cell_rows` を渡さなければ `rows` と同じ。
     """
     yuk, no_cell, kasanari = {}, [], []
     for r in rows:
@@ -466,26 +489,69 @@ def kazu_ga_au(rows, cells=None, today=None):
         # **升ごとに数える。** 全体で1本に畳むと、逆向きの食い違いが
         # 打ち消しあって鳴らない
         per = {}
+        欠け = 0
         for c in cells:
             n = c.get("_n")
             if n is None:
+                # **1つでも欠けたら止める**（2026-09-19）。
+                # 前は「全部無い」ときしか鳴らなかったので、
+                # 一部の升だけ `_n` が欠けると②が**その升だけ黙って飛ばし**、
+                # 親だけ残った升では「子が欠けている」と**ありもしない
+                # 食い違い**を報せた。`with_raw=True` は全升に無条件で
+                # 付けるので、一部だけ欠けるのは渡し方が間違っている
+                欠け += 1
                 continue
             per.setdefault(cell_axes(c), {})[c["stage"]] = n
-        if cells and not per:
-            # **黙って飛ばさない。** `_n` が無ければ②は見られない
+        if cells and 欠け:
             raise ValueError(
-                "升に実数(_n)が無いので、内訳の保存を見られない。"
-                "aggregate(..., with_raw=True) で作った升を渡すこと")
+                "升 %d 個のうち %d 個に実数(_n)が無い。内訳の保存を見られない。"
+                "aggregate(..., with_raw=True) で作った升を、"
+                "実数を落とす前に渡すこと" % (len(cells), 欠け))
         for axes in sorted(per, key=lambda a: tuple(str(v) for v in a)):
             for d in FAMILIES.check_sums(per[axes]):
                 d = dict(d, 升=axes)
                 uchiwake.append(d)
-                if d["欠けている子"]:
-                    bad.append("%s の子が欠けている升がある: %s"
-                               % (d["親"], "・".join(d["欠けている子"])))
+                # **どの升かを書く。** 書かないと、同じ1行が升の数だけ
+                # 並ぶ（実測で66行、`sort -u` すると1行）。
+                # 数だけ並べても、どこを見ればよいか分からない
+                どこ = "／".join(str(v) for v in axes if v)
+                if d["親の数"] is None:
+                    bad.append("%s の親の升が無いのに子がある（%s）。"
+                               "親を落とす前の升を渡すこと" % (d["親"], どこ))
+                elif d["欠けている子"]:
+                    bad.append("%s の子が欠けている（%s）: %s"
+                               % (d["親"], どこ, "・".join(d["欠けている子"])))
                 else:
-                    bad.append("%s の升 %d と、子の合計 %d が合わない升がある"
-                               % (d["親"], d["親の数"], d["子の合計"]))
+                    bad.append("%s の升 %d と、子の合計 %d が合わない（%s）"
+                               % (d["親"], d["親の数"], d["子の合計"], どこ))
+
+        # **升に出る段階は、全部まとまりに登録されていること**（2026-09-19）。
+        #
+        # 子が親の接頭辞を持たなくなったので、`undeclared()` は
+        # **「-」を含む名前しか拾えない。** 接頭辞を持たない段階を
+        # `events()` に足して登録を忘れると、どの見張りにも掛からずに
+        # `counts_by_city` に出る（取下げを結果に足す、がまさにこの形）。
+        # ②は登録されたまとまりしか見ず、③も登録された語しか数えない。
+        知らない = sorted({c["stage"] for c in cells
+                        if c["stage"] not in FAMILIES.parents
+                        and c["stage"] not in FAMILIES.children})
+        if 知らない:
+            bad.append("まとまりに登録されていない段階が升に出ている: %s。"
+                       "`FAMILIES` に足すこと（足さないと引き算の手当てが"
+                       "掛からない）" % "・".join(知らない))
+
+        # ③ **行と升を突き合わせる。** 升のまとまりが丸ごと消えるのは
+        # ①②のどちらにも掛からない
+        母 = rows if cell_rows is None else cell_rows
+        for 役, 語 in (("子", FAMILIES.children), ("親", FAMILIES.parents)):
+            升 = sum(n for d in per.values()
+                     for st, n in d.items() if st in 語)
+            行 = sum(1 for r in 母 for st, ym in events(r)
+                     if ym and st in 語)
+            if 升 != 行:
+                bad.append("%sの升の実数合計 %d と、行から数えた%sの出来事 %d が"
+                           "合わない。升がまとまりごと落ちている見込み"
+                           % (役, 升, 役, 行))
     return {
         "見た行": len(rows),
         "行方": yuk,
@@ -496,14 +562,14 @@ def kazu_ga_au(rows, cells=None, today=None):
     }
 
 
-def write_kazu(rows, cells=None, today=None):
+def write_kazu(rows, cells=None, today=None, cell_rows=None):
     """数が合うかを `data/parse-unknown.md` の章に書く。合わなければ落とす。
 
     **黙って通さない。** 合わない日は index.json を作らずに止める。
     生データは workflow の `if: always()` で保存ずみなので、
     止めても取り直せないものは失われない（正本 9節）。
     """
-    d = kazu_ga_au(rows, cells, today)
+    d = kazu_ga_au(rows, cells, today, cell_rows)
     body = [
         "**1行は必ず1つの行方に入る。足すと見た行の数になる。**",
         "正本の「升の合計 ＋ not_counted ＝ 見た行の数」は、"

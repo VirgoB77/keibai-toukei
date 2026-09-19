@@ -29,9 +29,16 @@ commit の時刻に `date -u` を打つと 09-19 が出て、**たまたま合�
 import io
 import os
 import re
+import sys
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# **`from common import jst` が通るようにする**（2026-09-19）。
+# discover は tests/ を足してくれるが、リポジトリの根は足さない。
+# ここだけ `sys.path` を入れ忘れていて、**直に走らせると4本中3本が落ちた。**
+# discover では通るので、いつもの通し方では見えなかった
+sys.path.insert(0, ROOT)
 
 # 時計を直に見る書き方
 CLOCK = re.compile(r"datetime\.now|date\.today|time\.time\(|utcnow")

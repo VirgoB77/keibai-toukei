@@ -135,10 +135,14 @@ _BRACKETS = str.maketrans({"（": "(", "）": ")", "〔": "(", "〕": ")"})
 _PLACEHOLDER_NONE = ("未定", "なし", "該当なし")
 _PLACEHOLDER_UNKNOWN = ("不明", "未詳", "無し")
 _PLACEHOLDER = _PLACEHOLDER_NONE + _PLACEHOLDER_UNKNOWN
+# **語は `re.escape()` を通す。** 正本5節の表に括弧つきの語
+# （`(未定)` のような）が足された日に、黙って別の正規表現になる
 _BOILERPLATE = re.compile(r"^[(（]?未定[)）]?|^未定|営む店舗|^[―—\-－ー]+\Z|"
                           r"^[(（]?未定\d+者[)）]?\Z|"
-                          + "|".join(r"^%s\Z" % w for w in _PLACEHOLDER))
-_UNREADABLE = re.compile("|".join(r"^%s\Z" % w for w in _PLACEHOLDER_UNKNOWN))
+                          + "|".join(r"^%s\Z" % re.escape(w)
+                                     for w in _PLACEHOLDER))
+_UNREADABLE = re.compile("|".join(r"^%s\Z" % re.escape(w)
+                                  for w in _PLACEHOLDER_UNKNOWN))
 
 # 列がずれて住所が入ったもの。丁目・番地・番・号と数字が並ぶ
 _ADDRESS = re.compile(r"\d+\s*(丁目|番地|番|号)|[0-9０-９]+[-－‐]\d")
@@ -354,8 +358,15 @@ def name_absent_confirmed(name_column):
     """その出どころは「名前の欄が無い」と確かめてあるか。
 
     sources.json の name_column を渡す。確かめてあるときだけ True。
+
+    **括弧と空白をそろえてから比べる**（2026-09-19）。
+    ここだけ `clean_name()` を通さない生の文字列比較だったので、
+    半角で `無し(確認ずみ)` と書くと黙って「未確認」に落ちた。
+    倒れる向きはきつい側（町丁目まで）なので地番は漏れないが、
+    **1枚読んで確かめた人の仕事が、書き方の違いで消える。**
+    このファイルのほかの判定は全部 `clean_name()` を通している。
     """
-    return (name_column or "") == NAME_COLUMN_ABSENT
+    return clean_name(name_column) == clean_name(NAME_COLUMN_ABSENT)
 
 
 def redact_addr(addr, kind, town=""):

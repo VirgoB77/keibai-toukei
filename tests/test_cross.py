@@ -171,5 +171,19 @@ class 規約の確認が済むまで止める(unittest.TestCase):
         self.assertFalse(make_cross.ENABLED)
 
 
+class 語を2か所に持たない(unittest.TestCase):
+    """**数えるのは1か所だけ**（正本 9節）。
+
+    前は `make_cross.py` に `SOLD` の並びを書き写していた。
+    `aggregate.SOLD` に語を1つ足しても跡地には効かない形だった。
+    **語彙が2か所にあると、必ず片方が古くなる。**
+    """
+
+    def test_売却の語はaggregateのものを使う(self):
+        import aggregate
+        self.assertIs(make_cross.SOLD, aggregate.SOLD,
+                      "make_cross が SOLD を写し持っている")
+
+
 if __name__ == "__main__":
     unittest.main()

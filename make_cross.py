@@ -64,6 +64,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
+import aggregate  # noqa: E402  段階と結果の語は aggregate が持つ
 from common import privacy  # noqa: E402
 from common import site  # noqa: E402
 from common.jst import today_str  # noqa: E402
@@ -92,7 +93,10 @@ USE_NG = re.compile(r"居宅|共同住宅|アパート|マンション|寄宿舎
 # （第一種低層住居専用地域〜準住居地域、田園住居地域）
 ZONING_NG = re.compile(r"住居")
 
-SOLD = ("売却", "落札", "売却済", "契約済")
+# **語は aggregate から借りる。写さない**（正本 9節「数えるのは1か所だけ」）。
+# 前はここに同じ並びを書き写していたので、`aggregate.SOLD` に語を1つ足しても
+# 跡地の横断ファイルには効かなかった。**語彙が2か所にあると、必ず片方が古くなる。**
+SOLD = aggregate.SOLD
 
 
 def _load_kibo():

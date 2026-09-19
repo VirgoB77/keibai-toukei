@@ -53,23 +53,47 @@ class 番人はいちばん下に置く(unittest.TestCase):
                 if (isinstance(node, ast.If)
                         and ast.dump(node.test).find("__main__") >= 0):
                     guard = node.lineno
-                elif guard is not None and isinstance(
-                        node, (ast.ClassDef, ast.FunctionDef)):
-                    bad.append("%s:%d %s（番人は %d 行目）"
-                               % (name, node.lineno, node.name, guard))
+                elif guard is not None:
+                    # **`if` や `try` でくるんだ定義も拾う**（2026-09-19）。
+                    # 前は tree.body の直下しか見ていなかったので、
+                    # 番人の後ろに `if True:` で包んだ TestCase を置くと
+                    # 21本が20本になっても**緑のまま**だった。
+                    # 拾う側が防ぐと宣言している被害そのものを素通りさせていた
+                    for sub in ast.walk(node):
+                        if isinstance(sub, (ast.ClassDef, ast.FunctionDef,
+                                            ast.AsyncFunctionDef)):
+                            bad.append("%s:%d %s（番人は %d 行目）"
+                                       % (name, sub.lineno, sub.name, guard))
         self.assertEqual(
             bad, [],
             "番人のあとに定義がある。**直に走らせたとき、ここから下が"
             "丸ごと走らない。**落ちないので気づけない:\n" + "\n".join(bad))
 
     def test_番人はどのファイルにもある(self):
-        """無いと、そのファイルだけ直に走らせられない。そろえておく。"""
+        """無いと、そのファイルだけ直に走らせられない。そろえておく。
+
+        **文字列で探さない**（2026-09-19）。隣の検査は ast で見ているのに、
+        こちらだけ `"__main__" in text` だった。コメントに1行書くだけで
+        通ってしまい、番人を消しても緑のままだった。
+        """
         bad = []
         for name, path in test_files():
             with io.open(path, encoding="utf-8") as f:
-                if "__main__" not in f.read():
-                    bad.append(name)
+                tree = ast.parse(f.read(), filename=name)
+            if not any(isinstance(n, ast.If)
+                       and ast.dump(n.test).find("__main__") >= 0
+                       for n in tree.body):
+                bad.append(name)
         self.assertEqual(bad, [], "番人が無いファイル")
+
+    def test_この見張り自身にも掛かっている(self):
+        """**自分のコードを例外にしない**（正本 9節）。
+
+        `test_files()` は `test_` で始まるファイルを全部返すので、
+        このファイルも入っている。入っていることを固定しておく。
+        """
+        self.assertIn("test_tests.py", [n for n, _ in test_files()])
+        self.assertTrue(list(test_files()), "1本も見ていない")
 
 
 if __name__ == "__main__":

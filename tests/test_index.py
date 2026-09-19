@@ -528,5 +528,41 @@ class 組み立てたindex(unittest.TestCase):
         self.assertNotIn("山田太郎", text)
 
 
+class 数が合わない日はindexを作らない(unittest.TestCase):
+    """**`make_index.build()` の `RuntimeError` を、実際に落として確かめる。**
+
+    2026-09-19 に sys.settrace で数えたら、この raise は
+    テストから**一度も通っていなかった**。検査ごと消しても全部緑だった。
+    """
+
+    行 = {"system": "keibai", "pref": "兵庫県", "city": "西宮市",
+         "city_code": "28204", "kind": "土地", "first_seen": "2026-09-01",
+         "open_date": "2026-09-10", "status": "売却"}
+
+    def test_合っていれば作れる(self):
+        out = make_index.build([dict(self.行)], today="2026-09-19")
+        self.assertTrue(out["counts_by_city"])
+
+    def test_升がまとまりごと落ちたら止まる(self):
+        """**これが「黙って落としている」の実体。**
+
+        升を作る側を差し替えて、まとまりを1つ落とす。
+        前はこれで `counts_by_city` が減ったまま通っていた。
+        """
+        import aggregate
+        本物 = make_index.make_cells
+
+        def 落とす(rows, fields, with_raw=False):
+            cells = 本物(rows, fields, with_raw=with_raw)
+            return [c for c in cells if c["stage"] != "落札"]
+
+        make_index.make_cells = 落とす
+        try:
+            with self.assertRaises(RuntimeError):
+                make_index.build([dict(self.行)], today="2026-09-19")
+        finally:
+            make_index.make_cells = 本物
+
+
 if __name__ == "__main__":
     unittest.main()

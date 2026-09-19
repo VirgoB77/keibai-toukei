@@ -493,5 +493,84 @@ class 正本5節_residential_reason(unittest.TestCase):
         self.assertEqual(privacy.lived_in_reason(row2), "住居系の用途地域")
 
 
+class 読めなかった語を当事者がいない側に倒さない(unittest.TestCase):
+    """正本5節の表の語は、**名前かどうか**と**当事者の扱い**が別（2026-09-19）。
+
+    表に `未詳` `不明` `なし` `無し` が足されたとき、
+    `is_boilerplate()`（名前かどうか）だけを見て
+    `classify_party()`（当事者の扱い）を追わなかった。
+
+        当てた後  不明 → ('none', …)  ← **地番まで出してよい側**
+
+    `none` は「そもそも当事者を持たない制度のレコード」で、
+    `redact_addr()` が住所をそのまま返す。
+    「欄はあるが読めていない → individual（町丁目まで）」と逆を向いていた。
+
+    **直したときに、この見張りを付けていなかった。**
+    戻っても誰も気づかない形だったので、あとから足した。
+    """
+
+    住所 = "大阪市北区中津3-1-1"
+    町丁目 = "大阪市北区中津3"
+
+    def test_読めなかった語はindividual(self):
+        """**きつい側。** 相手はいる。こちらが読めていないだけ。"""
+        for w in privacy._PLACEHOLDER_UNKNOWN:
+            kind, why = privacy.classify_party(w)
+            self.assertEqual(kind, privacy.INDIVIDUAL,
+                             "%s が %s に倒れている" % (w, kind))
+            self.assertEqual(why, privacy.REASON_UNREADABLE, w)
+
+    def test_読めなかった語で地番が出ない(self):
+        """**これが実害。** 倒れると住所がそのまま出る。"""
+        for w in privacy._PLACEHOLDER_UNKNOWN:
+            kind, _ = privacy.classify_party(w)
+            self.assertEqual(privacy.redact_addr(self.住所, kind, "中津3"),
+                             self.町丁目, w)
+
+    def test_当事者がいない語はnoneのまま(self):
+        """未定・なし・該当なし は、そこに相手がいない。前と同じ扱い。"""
+        for w in privacy._PLACEHOLDER_NONE:
+            kind, _ = privacy.classify_party(w)
+            self.assertEqual(kind, privacy.NONE, w)
+
+    def test_表の語は全部名前ではない(self):
+        """正本5節の表そのもの。**扱いが分かれても、名前でないのは同じ。**"""
+        for w in privacy._PLACEHOLDER:
+            self.assertTrue(privacy.is_boilerplate(w), w)
+            self.assertNotEqual(privacy.redact_name(w), w,
+                                "%s がそのまま出ている" % w)
+
+    def test_2つの並びは重ならず表と同じ(self):
+        """**片方に足してもう片方から漏れる**のを止める。"""
+        self.assertEqual(set(privacy._PLACEHOLDER_NONE)
+                         & set(privacy._PLACEHOLDER_UNKNOWN), set())
+        self.assertEqual(set(privacy._PLACEHOLDER),
+                         set(privacy._PLACEHOLDER_NONE)
+                         | set(privacy._PLACEHOLDER_UNKNOWN))
+
+    def test_確認ずみの無しとは別物(self):
+        """`無し` と `無し（確認ずみ）` を取り違えない。
+
+        あちらは「名前の欄が**無いと確かめた**」の印で、
+        undisclosed（地番まで）を名乗れる唯一の条件。
+        """
+        self.assertTrue(privacy.is_unreadable("無し"))
+        self.assertFalse(privacy.is_unreadable(privacy.NAME_COLUMN_ABSENT))
+        self.assertFalse(privacy.is_boilerplate(privacy.NAME_COLUMN_ABSENT))
+
+    def test_確認ずみの印は半角の括弧でも通る(self):
+        """**書き方で黙って「未確認」に落ちない。**
+
+        `NAME_COLUMN_ABSENT` は全角の括弧。半角で書かれた同じ意味の文字列が
+        `未確認` に落ちると、地番まで出せる出どころが出せなくなる
+        （倒れる向きはきつい側なので害は小さいが、確かめた人の仕事が消える）。
+        """
+        for w in ("無し（確認ずみ）", "無し(確認ずみ)", " 無し（確認ずみ） "):
+            self.assertTrue(privacy.name_absent_confirmed(w), repr(w))
+        for w in ("無し", "あり", "未確認", ""):
+            self.assertFalse(privacy.name_absent_confirmed(w), repr(w))
+
+
 if __name__ == "__main__":
     unittest.main()

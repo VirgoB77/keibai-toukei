@@ -157,11 +157,23 @@ class Families:
         """
         bad = []
         for f in self.families:
+            子 = [k for k in f[1:] if k in totals]
             if f[0] not in totals:
+                # **親も子も無いのは「起きていない」。** 公告しか起きていない
+                # 升に「結果が無い」と言わない
+                if not 子:
+                    continue
+                # **子があるのに親が無いのは、飛ばしてはいけない**（2026-09-19）。
+                # 親を落としたあとの升を渡すと、全まとまりがここで飛んで
+                # **検査が丸ごと消える**。`_n` には門番があるのに、
+                # 親欠けには門番が無かった
+                bad.append({"親": f[0], "親の数": None,
+                            "子の合計": sum(totals[k] for k in 子),
+                            "欠けている子": []})
                 continue
             # **親が0で、子が1つも無いのは「起きていない」**（2026-09-19）。
             # 「欠けている」と読むと、何も起きていない升で公開が止まる
-            if totals[f[0]] == 0 and not any(k in totals for k in f[1:]):
+            if totals[f[0]] == 0 and not 子:
                 continue
             missing = [k for k in f[1:] if k not in totals]
             if missing:
