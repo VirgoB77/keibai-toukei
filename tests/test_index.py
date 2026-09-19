@@ -839,5 +839,65 @@ class 原因の違うものを1つの欄に入れない(unittest.TestCase):
         self.assertIn("見に行っていない", text)
 
 
+class 空の鍵で升を作らない(unittest.TestCase):
+    """**横断ハブはコードで引く**（2026-09-19、姉妹サイトの実物から）。
+
+    大型店日報が `city_code` を空のまま升を16枚作って公開していた。
+    横断ハブはコードで引くので、**空の鍵にまとまるか、黙って落ちる。**
+    どちらも「そこに何もなかった」と読めてしまう。
+
+    こちらの実装は落としている（`make_index.build` が
+    `if c.get("city_code")` で絞り、落ちた分は `data/index-dropped.md`）。
+    **ただし、それを留めている検査が1本も無かった。**
+    実装が正しいことと、見張りがあることは別。
+    """
+
+    def 行(self, city, i, code=None):
+        r = {"system": "keibai", "pref": "大阪府", "city": city,
+             "kind": "土地", "first_seen": "2026-09-17",
+             "seen": ["2026-09-17"], "open_date": "2026-11-05", "status": "",
+             "property_key": "x:%d:1" % i, "key": "x:%d:1:o" % i,
+             "saishutsu": False}
+        if code is not None:
+            r["city_code"] = code
+        return r
+
+    def test_コードが引けない升は出さない(self):
+        rows = [self.行("茨木市", i) for i in range(3)]
+        rows += [self.行("そんな市は無い", 9 + i, code="") for i in range(3)]
+        out = make_index.build(rows)
+        空 = [c for c in out["counts_by_city"]
+              if not (c.get("city_code") or "").strip()]
+        self.assertEqual(空, [], "空の鍵で升を作っている")
+
+    def test_全部の升にコードがある(self):
+        rows = [self.行("茨木市", i) for i in range(3)]
+        for c in make_index.build(rows)["counts_by_city"]:
+            self.assertIn("city_code", c, "欄そのものが無い升がある")
+            self.assertTrue((c["city_code"] or "").strip(), c)
+
+    def test_落としたものは記録に残る(self):
+        """**黙って捨てない**（正本 9節）。出せないことと、無いことは別。"""
+        rows = [self.行("茨木市", i) for i in range(3)]
+        rows += [self.行("そんな市は無い", 9, code="")]
+        out = make_index.build(rows)
+        self.assertTrue(out["_dropped"], "落とした升が控えに残っていない")
+
+    def test_配っているものにも空の鍵が無い(self):
+        """**仕掛けではなく実物を見る。** 出来上がったファイルを読む。"""
+        path = os.path.join(ROOT, "data", "public", "index.json")
+        if not os.path.exists(path):
+            path = os.path.join(ROOT, "data", "index.json")
+        if not os.path.exists(path):
+            self.skipTest("配るファイルがここには無い")
+        with open(path, encoding="utf-8") as f:
+            cb = json.load(f)["counts_by_city"]
+        for c in cb:
+            code = (c.get("city_code") or "").strip()
+            self.assertTrue(code, c)
+            self.assertTrue(code.isdigit() and len(code) == 5,
+                            "市区町村コードの形が違う（%r）" % code)
+
+
 if __name__ == "__main__":
     unittest.main()
