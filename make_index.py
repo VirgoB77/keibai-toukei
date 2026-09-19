@@ -84,7 +84,7 @@ SYSTEM_LABEL = {"keibai": "競売", "kobai": "公売",
                 "kokuyu": "国有財産", "koyu": "公有財産"}
 
 
-def not_counted(rows):
+def not_counted(rows, today=None):
     """升に結果が出ていない行の数。**欄の名前は正本 6節が決めた3つ。**
 
         unresolved  読めなかった。語彙の穴。**こちらが減らす**
@@ -95,10 +95,15 @@ def not_counted(rows):
 
     数えるのは `aggregate.yukue()`。1行は必ず1つの行方に入るので、
     ここの3つと「落札・不調・待ち」を足すと、必ず見た行の数になる。
+
+    **`today` を受け取って最後まで渡す**（2026-09-19）。
+    渡さないと `yukue()` の中で `jst_today()` を見るので、
+    `generated_at` と `not_counted` が**別の日を見る**。
+    1回の実行の中で時計を2回見ない（`common/jst.py`）。
     """
     out = {k: 0 for k in ("unresolved", "undecided", "gone")}
     for r in rows:
-        key = YUKUE_KEY.get(yukue(r))
+        key = YUKUE_KEY.get(yukue(r, today))
         if key:
             out[key] += 1
     return out
@@ -273,7 +278,7 @@ def build(rows, today=None):
     # 畳むところで落ちても、あちらは気づかない。
     # 市区町村コードで絞る前の `everything` で見る（絞ったあとだと、
     # 落ちた升のぶんだけ子の合計が親に足りなくなる）。
-    kazu = kazu_ga_au(rows, everything)
+    kazu = kazu_ga_au(rows, everything, today)
     if kazu["食い違い"]:
         raise RuntimeError(
             "数が合わない。黙って落としている。\n  "
@@ -329,7 +334,7 @@ def build(rows, today=None):
         # 入って合計が見た行の数を超える。`yukue()` は上から1つに決めるので、
         # 足すと必ず見た行の数になる。決めたときに落ちた合図は
         # `yukue_conflicts()` が拾い、data/parse-unknown.md に出る
-        "not_counted": not_counted(rows),
+        "not_counted": not_counted(rows, today),
         "_dropped": dropped,      # 呼ぶ側が人に知らせるためのもの。出力からは外す
         "_yoyuu": measure_yoyuu(cells, drop),
     }

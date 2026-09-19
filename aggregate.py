@@ -375,24 +375,38 @@ def yukue(row, today=None):
     return "待ち"
 
 
-def yukue_conflicts(row):
-    """行方の合図が2つ以上立っている行。**黙って上から1つ選ばない。**
+def yukue_conflicts(row, today=None):
+    """**合図どうしが食い違っている行。**
 
-    たとえば status が「取下げ」なのに `gone_on` も立っている行。
-    どちらか片方が間違っているか、順番の決め方が実物と合っていない。
-    `yukue()` は順番で1つに決めるが、**決めたことが見えないと直せない**。
+    前はここで「`gone_on` が立っている」を無条件に合図に数えていた。
+    **それは食い違いではない。** `parse.merge_snapshot()` は、その日の一覧に
+    出てこなかった行すべてに `gone_on` を付ける。売れた物件も不売の物件も、
+    開札が済めば一覧から落ちる。**普通の一生**が毎回「重なり」として鳴り、
+    結果が溜まるほど鳴り続ける（正本 9節「誤報を出す見張りは、そのうち
+    誰も見なくなる」）。2026-09-19 に指摘されて直した。
+
+    `status` は1つの文字列なので、落札と不調、結果と取下げは同時に立たない。
+    **本当に食い違うのは1つだけ。**
+
+        開札日より前に一覧から消えたのに、結果が出ている
+
+    消えたあとに結果が出ることはない。どちらかの読みが間違っている。
     """
-    on = []
     status = row.get("status") or ""
-    if status in SOLD:
-        on.append(OCHI)
-    if status in UNSOLD:
-        on.append(FUCHO)
-    if status in WITHDRAWN:
-        on.append("取下げ")
-    if gone(row):
-        on.append("消えた")
-    return on if len(on) > 1 else []
+    gone_on = row.get("gone_on") or ""
+    day = row.get("open_date") or ""
+    if not (gone_on and day and gone_on < day):
+        return []
+    if status in SOLD or status in UNSOLD:
+        return ["開札日(%s)より前に消えた(%s)のに、結果が出ている(%s)"
+                % (day, gone_on, status)]
+    return []
+
+
+def cell_axes(cell):
+    """升の鍵のうち、段階以外の軸。**升ごとに数えるために要る。**"""
+    return tuple(cell.get(f) for f in BUCKET_FIELDS
+                 if f != "stage" and f in cell)
 
 
 def kazu_ga_au(rows, cells=None, today=None):
@@ -402,40 +416,81 @@ def kazu_ga_au(rows, cells=None, today=None):
     戻すのは辞書。`食い違い` が空なら合っている。
 
     **最初の1件で止まらない**（正本 9節）。全部見てから返す。
+
+    ## 2026-09-19 に、どちらも鳴らない形だったのを直した
+
+    ①は `行方の合計 != 見た行の数` を見ていた。**これは恒真。**
+    `yukue()` は必ず6つのどれかを返し、行ごとに1つ足すので、合計は
+    いつでも行の数に等しい。看板に「黙って落としていないか」と書いて、
+    **1つも確かめていなかった。**
+
+    本当に黙って落ちるのは「**行方は付くのに升が1つもできない行**」。
+    日付の列を読み落とすと `events()` が空を返し、升にも `not_counted` にも
+    出ないまま消える。いまはそれを見る。
+
+    ②は段階ごとの合計を**全体で1本**に畳んでいた。`events()` は1行から
+    親と子をちょうど1つずつ出すので、全体で足すと **親 ＝ 子の合計** が
+    恒等的に成り立つ。市や月のどこで食い違っても、別の升の逆向きの
+    食い違いと打ち消しあう。**升ごとに見る。**
     """
-    yuk = {}
+    yuk, no_cell, kasanari = {}, [], []
     for r in rows:
         y = yukue(r, today)
         yuk[y] = yuk.get(y, 0) + 1
-    bad = []
-    total = sum(yuk.values())
-    if total != len(rows):
-        bad.append("行方の合計 %d が、見た行の数 %d と合わない"
-                   % (total, len(rows)))
+        # **升にも not_counted にも出ない行**。これが「黙って落ちる」の実体。
+        # 2つある。
+        #   ① 升が1つもできない          日付の列を読み落とした
+        #   ② 落札と名乗るのに落札の升が無い  結果の月だけ読めていない
+        # ②は①より見つけにくい。公告の升には入るので、行が消えた顔をしない
+        if y not in YUKUE_KEY:
+            stages = {st for st, _ym in events(r)}
+            if not stages:
+                no_cell.append((y, "升が1つもできない"))
+            elif y in (OCHI, FUCHO) and y not in stages:
+                no_cell.append((y, "%s と読めているのに %s の升が無い"
+                                   % (y, y)))
+        kasanari += yukue_conflicts(r, today)
 
-    kasanari = [r for r in rows if yukue_conflicts(r)]
+    bad = []
+    why = {}
+    for y, w in no_cell:
+        why[w] = why.get(w, 0) + 1
+    for w in sorted(why):
+        bad.append("%s行が %d 件ある。日付の列が読めていない見込み"
+                   % (w + "（行方あり）の", why[w]))
+    for c in kasanari:
+        bad.append("合図が食い違う行: " + c)
 
     uchiwake = []
     if cells is not None:
-        # 段階ごとの**真の件数**を足す。ぼかした count ではない
-        totals = {}
+        # **升ごとに数える。** 全体で1本に畳むと、逆向きの食い違いが
+        # 打ち消しあって鳴らない
+        per = {}
         for c in cells:
             n = c.get("_n")
             if n is None:
                 continue
-            totals[c["stage"]] = totals.get(c["stage"], 0) + n
-        uchiwake = FAMILIES.check_sums(totals)
-        for d in uchiwake:
-            if d["欠けている子"]:
-                bad.append("%s の子が欠けている: %s"
-                           % (d["親"], "・".join(d["欠けている子"])))
-            else:
-                bad.append("%s の升 %d と、子の合計 %d が合わない"
-                           % (d["親"], d["親の数"], d["子の合計"]))
+            per.setdefault(cell_axes(c), {})[c["stage"]] = n
+        if cells and not per:
+            # **黙って飛ばさない。** `_n` が無ければ②は見られない
+            raise ValueError(
+                "升に実数(_n)が無いので、内訳の保存を見られない。"
+                "aggregate(..., with_raw=True) で作った升を渡すこと")
+        for axes in sorted(per, key=lambda a: tuple(str(v) for v in a)):
+            for d in FAMILIES.check_sums(per[axes]):
+                d = dict(d, 升=axes)
+                uchiwake.append(d)
+                if d["欠けている子"]:
+                    bad.append("%s の子が欠けている升がある: %s"
+                               % (d["親"], "・".join(d["欠けている子"])))
+                else:
+                    bad.append("%s の升 %d と、子の合計 %d が合わない升がある"
+                               % (d["親"], d["親の数"], d["子の合計"]))
     return {
         "見た行": len(rows),
         "行方": yuk,
-        "重なり": len(kasanari),
+        "升にならない行": len(no_cell),
+        "食い違う合図": len(kasanari),
         "内訳": uchiwake,
         "食い違い": bad,
     }
@@ -464,10 +519,14 @@ def write_kazu(rows, cells=None, today=None):
                     % (y, d["行方"].get(y, 0), YUKUE_KEY.get(y, "（出していない）")))
     body.append("| **合計** | **%d** | 見た行 %d |"
                 % (sum(d["行方"].values()), d["見た行"]))
-    if d["重なり"]:
-        body += ["", "**行方の合図が2つ以上立っている行が %d 件ある。**"
-                     "順番で1つに決めているが、決め方が実物と合っていない"
-                     "おそれがある。" % d["重なり"]]
+    if d["升にならない行"]:
+        body += ["", "**升が1つもできない行が %d 件ある。**"
+                     "行方は付いているのに、升にも not_counted にも出ていない。"
+                     "日付の列が読めていない見込み。" % d["升にならない行"]]
+    if d["食い違う合図"]:
+        body += ["", "**合図が食い違う行が %d 件ある。**"
+                     "開札日より前に消えたのに結果が出ている、という形。"
+                     % d["食い違う合図"]]
     if d["食い違い"]:
         body += ["", "**合っていない。**"] + ["- " + b for b in d["食い違い"]]
     report.put_chapter(UNKNOWN_PATH, "数が合うこと", "\n".join(body))
@@ -617,8 +676,13 @@ def load_rows():
 UNKNOWN_PATH = os.path.join(HERE, "data", "parse-unknown.md")
 
 
-def write_unresolved(rows):
+def write_unresolved(rows, today=None):
     """段階が決まらなかった行を、人が見られるところに書き出す。件数を返す。
+
+    **数えるのは `yukue()` の1か所だけ**（正本 9節・2026-09-19）。
+    前はここで `unresolved()` `undecided()` `gone()` を別々に呼んでいた。
+    3つは排他ではないので、同じ行が2つの章に入り、
+    **同じファイルの中で「数が合うこと」の表と件数が食い違っていた。**
 
     **升は作らない。記録だけ残す**（正本 9節・2026-09-19）。
     「不明」という段階を作ると、横断ハブで4サイトの不明が1つの塊になる。
@@ -626,7 +690,7 @@ def write_unresolved(rows):
     **不明は値ではなく徴候。** ここが増えていたら、段階の語彙が足りていない印。
     減らすのが仕事で、固定するものではない。
     """
-    bad = [r for r in rows if unresolved(r)]
+    bad = [r for r in rows if yukue(r, today) == "読めない"]
     body = []
     if not bad:
         body.append("無かった。")
@@ -653,7 +717,7 @@ def write_unresolved(rows):
 
     # **読めているが置き場が決まっていない値は、別の章にする。**
     # 語彙の穴（上）と混ぜると、穴がいくつあるのかが読めなくなる
-    hold = [r for r in rows if undecided(r)]
+    hold = [r for r in rows if yukue(r, today) == "取下げ"]
     body2 = []
     if not hold:
         body2.append("無かった。")
@@ -684,7 +748,7 @@ def write_unresolved(rows):
                        "\n".join(body2))
 
     # **消えた物件。取下げか繰り越しか、まだ決められない。**
-    lost = [r for r in rows if gone(r)]
+    lost = [r for r in rows if yukue(r, today) == "消えた"]
     body3 = []
     if not lost:
         body3.append("無かった。")
@@ -704,16 +768,22 @@ def write_unresolved(rows):
             "行は捨てていない（`gone_on` を付けて残してある）。",
             "`seen`（見えた日の全部）の切れ目で再登場が分かる。",
             "",
-            "| 制度 | 消えた月 | 開札の予定月 | 件数 |",
-            "| --- | --- | --- | --- |",
+            # **`status` の列を落とさない**（2026-09-19）。
+            # 一覧から消えるのは取下げを見つける主な手段なので、
+            # 「読めない語」と「消えた」は同じ行で起きやすい。
+            # `unresolved()` は消えた行を外すので、status の列をここで
+            # 出さないと、**読めなかった語がどこにも現れない**。
+            # 語彙の穴を減らすのがこちらの仕事なのに、徴候が黙る
+            "| 制度 | 消えたときの status | 消えた月 | 開札の予定月 | 件数 |",
+            "| --- | --- | --- | --- | --- |",
         ]
         n = {}
         for r in lost:
-            k = (r.get("system") or "", (r.get("gone_on") or "")[:7],
-                 month_result(r))
+            k = (r.get("system") or "", r.get("status") or "（空）",
+                 (r.get("gone_on") or "")[:7], month_result(r))
             n[k] = n.get(k, 0) + 1
         for k in sorted(n):
-            body3.append("| %s | %s | %s | %d |" % (k + (n[k],)))
+            body3.append("| %s | `%s` | %s | %s | %d |" % (k + (n[k],)))
     report.put_chapter(UNKNOWN_PATH, "消えた物件（取下げか繰り越しか未判定）",
                        "\n".join(body3))
     return len(bad), len(hold), len(lost)
@@ -727,7 +797,7 @@ def main():
     # 合わない日は monthly.json を書かずに止める。
     # 集計は毎回作り直せるので、書かずに止めても取り直せないものは失われない。
     # 生データは workflow の `if: always()` で保存ずみ（正本 9節）。
-    kazu = write_kazu(rows, cells)
+    kazu = write_kazu(rows, cells, today_str())
     print("行方: " + "／".join("%s %d" % (y, kazu["行方"].get(y, 0))
                               for y in YUKUE if kazu["行方"].get(y)))
 
@@ -762,7 +832,7 @@ def main():
         json.dump(out, f, ensure_ascii=False, indent=1)
         f.write("\n")
     print("行データ %d 件 → 升 %d 個" % (len(rows), len(cells)))
-    bad, hold, lost = write_unresolved(rows)
+    bad, hold, lost = write_unresolved(rows, today_str())
     if bad:
         # **升にはしない。** 黙ってもいない
         print("  **段階が決まらなかった行: %d 件**（data/parse-unknown.md）。"

@@ -86,6 +86,20 @@ class Families:
         self.families = tuple(tuple(f) for f in families)
         self.parents = tuple(f[0] for f in self.families)
         self.children = tuple(k for f in self.families for k in f[1:])
+        # **まとまりをまたいだ重なりも見る**（2026-09-19）。
+        # 上の検査は1つのまとまりの中しか見ていなかったので、
+        # `("結果","落札","不調"), ("公告","公告-新規","落札")` が通っていた。
+        # 同じ子が2つの親に属すと、どちらの足し算も正しくならない
+        dup = sorted({k for k in self.children
+                      if self.children.count(k) > 1})
+        if dup:
+            raise ValueError("子が2つ以上のまとまりに入っている: %r" % (dup,))
+        # **子が、ほかのまとまりの親と同じ名前になっていないか。**
+        # 親は出さない升なので、子の名前と重なると「出す升」と
+        # 「出さない升」が同じ名前になる
+        both = sorted(set(self.children) & set(self.parents))
+        if both:
+            raise ValueError("親と子で同じ名前が使われている: %r" % (both,))
 
     def family_of(self, stage):
         """その段階が属するまとまり。内訳でも親でもなければ None。"""
@@ -144,6 +158,10 @@ class Families:
         bad = []
         for f in self.families:
             if f[0] not in totals:
+                continue
+            # **親が0で、子が1つも無いのは「起きていない」**（2026-09-19）。
+            # 「欠けている」と読むと、何も起きていない升で公開が止まる
+            if totals[f[0]] == 0 and not any(k in totals for k in f[1:]):
                 continue
             missing = [k for k in f[1:] if k not in totals]
             if missing:

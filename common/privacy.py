@@ -114,11 +114,31 @@ _BRACKETS = str.maketrans({"（": "(", "）": ")", "〔": "(", "〕": ")"})
 # **`無し` と `無し（確認ずみ）` は別物**（NAME_COLUMN_ABSENT を見ること）。
 # こちらは「名前の欄に書いてある文言」、あちらは「名前の欄が無いと確かめた」。
 # 取り違えると、名前の欄がある出どころが undisclosed を名乗って地番が出る。
-# だから `^無し$` と端で留め、`無し（確認ずみ）` には当たらないようにしてある
-_PLACEHOLDER = ("未定", "未詳", "不明", "なし", "無し", "該当なし")
-_BOILERPLATE = re.compile(r"^[(（]?未定[)）]?|^未定|営む店舗|^[―—\-－ー]+$|"
-                          r"^[(（]?未定\d+者[)）]?$|"
-                          + "|".join(r"^%s$" % w for w in _PLACEHOLDER))
+# だから端で留め、`無し（確認ずみ）` には当たらないようにしてある。
+# `$` ではなく `\Z` を使う（`$` は末尾の改行の手前にも当たる）。
+#
+# **2つに割ってある。「名前ではない」は同じでも、当事者の扱いが違う。**
+#
+#     当事者がいない  未定・なし・該当なし … そこに相手がいない
+#     読めなかった    不明・未詳・無し     … **相手はいる。こちらが読めていない**
+#
+# 前者は `none`（当事者を持たない制度のレコード）でよい。
+# **後者を `none` にしてはいけない。** `none` は `redact_addr()` が
+# 地番まで出してよい側で、「欄はあるが読めていない → individual（町丁目まで）」
+# という正本 5節の決まりと逆を向く。
+#
+# 2026-09-19、一度これを間違えた。5節の表に語を足すとき、
+# `is_boilerplate()`（名前かどうか）だけを見て、`classify_party()`
+# （当事者の扱い）を見ていなかった。**不明・未詳・無しが
+# individual から none に倒れていた**（ゆるい側）。
+# **語を1つ足すときは、その語が通る関数を最後まで追う。**
+_PLACEHOLDER_NONE = ("未定", "なし", "該当なし")
+_PLACEHOLDER_UNKNOWN = ("不明", "未詳", "無し")
+_PLACEHOLDER = _PLACEHOLDER_NONE + _PLACEHOLDER_UNKNOWN
+_BOILERPLATE = re.compile(r"^[(（]?未定[)）]?|^未定|営む店舗|^[―—\-－ー]+\Z|"
+                          r"^[(（]?未定\d+者[)）]?\Z|"
+                          + "|".join(r"^%s\Z" % w for w in _PLACEHOLDER))
+_UNREADABLE = re.compile("|".join(r"^%s\Z" % w for w in _PLACEHOLDER_UNKNOWN))
 
 # 列がずれて住所が入ったもの。丁目・番地・番・号と数字が並ぶ
 _ADDRESS = re.compile(r"\d+\s*(丁目|番地|番|号)|[0-9０-９]+[-－‐]\d")
@@ -156,6 +176,16 @@ def drop_hoka(name):
 def is_boilerplate(name):
     """名前ではない文言か（未定・物品販売業を営む店舗・―）。"""
     return bool(_BOILERPLATE.search(clean_name(name)))
+
+
+def is_unreadable(name):
+    """名前ではないが、**当事者がいないわけでもない**文言か（不明・未詳・無し）。
+
+    `is_boilerplate()` は「名前ではない」を見る。こちらは
+    「**そこに相手がいないのか、こちらが読めていないのか**」を分ける。
+    読めていないだけなら、きつい側（individual）に倒す（正本 5節）。
+    """
+    return bool(_UNREADABLE.search(clean_name(name)))
 
 
 def looks_like_address(name):
@@ -228,6 +258,8 @@ def is_corp(name):
 REASON_CORP = "法人"
 REASON_GOV = "官公庁"
 REASON_BOILERPLATE = "名前ではない文言"
+# **読めなかった。当事者がいないのとは違う**（正本 5節・2026-09-19）
+REASON_UNREADABLE = "読めなかった"
 REASON_ADDRESS = "住所らしい（列ずれの疑い）"
 REASON_TRUNCATED = "切れた法人名"
 REASON_PERSON = "個人"
@@ -243,6 +275,10 @@ def classify_party(name, others=(), disclosed=True):
     s = clean_name(name)
     if not s:
         return (UNDISCLOSED if not disclosed else INDIVIDUAL), REASON_EMPTY
+    if is_unreadable(s):
+        # **読めなかっただけ。相手はいる。**
+        # `none` にすると地番まで出してよい側に倒れる（正本 5節）
+        return INDIVIDUAL, REASON_UNREADABLE
     if is_boilerplate(s):
         return NONE, REASON_BOILERPLATE
     if looks_like_address(s):

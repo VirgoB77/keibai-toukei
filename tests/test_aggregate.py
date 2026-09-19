@@ -529,25 +529,123 @@ class 足したときに数が合うこと(unittest.TestCase):
                                "読めない"])
 
     def test_行方を足すと見た行の数になる(self):
-        rows = [行(status="売却", open_date="2026-10-01"),
-                行(status="取下げ"),
-                行(status="", open_date="2099-01-01")]
+        rows = [行(status="売却", first_seen="2026-09-01",
+                  open_date="2026-10-01"),
+                行(status="取下げ", first_seen="2026-09-01"),
+                行(status="", first_seen="2026-09-01",
+                  open_date="2099-01-01")]
         d = aggregate.kazu_ga_au(rows, today="2026-10-20")
         self.assertEqual(sum(d["行方"].values()), len(rows))
         self.assertEqual(d["食い違い"], [])
 
-    def test_合図が2つ立っている行は黙って選ばない(self):
-        """**取下げなのに消えてもいる**行。順番で1つに決めるが、記録は残す。"""
-        r = 行(status="取下げ", gone_on="2026-09-18")
-        self.assertEqual(aggregate.yukue(r), "取下げ")
-        self.assertEqual(aggregate.yukue_conflicts(r), ["取下げ", "消えた"])
-        d = aggregate.kazu_ga_au([r])
-        self.assertEqual(d["重なり"], 1)
-        # 重なっていても、行方は1つなので合計は合う
-        self.assertEqual(sum(d["行方"].values()), 1)
+    def test_升が1つもできない行を拾う(self):
+        """**これが「黙って落ちる」の実体。**
 
-    def test_合図が1つなら重なりに出ない(self):
-        self.assertEqual(aggregate.yukue_conflicts(行(status="取下げ")), [])
+        前の検査（行方の合計 ＝ 見た行の数）は恒真で、1つも拾えなかった。
+        日付の列を読み落とすと `events()` が空を返し、
+        升にも not_counted にも出ないまま消える。
+        """
+        # 日付が1つも無い。行方は「待ち」だが、升は1つもできない
+        rows = [行(status="", first_seen="", open_date="", bid_end="",
+                  last_seen="")]
+        d = aggregate.kazu_ga_au(rows, today="2026-10-20")
+        self.assertEqual(d["升にならない行"], 1)
+        self.assertTrue(d["食い違い"], "升が1つもできないのに鳴らない")
+
+    def test_落札と読めているのに落札の升が無い行を拾う(self):
+        """**①より見つけにくい形。** 公告の升には入るので、消えた顔をしない。"""
+        rows = [行(status="売却", first_seen="2026-09-01",
+                  open_date="", bid_end="", last_seen="")]
+        d = aggregate.kazu_ga_au(rows, today="2026-10-20")
+        self.assertEqual(d["升にならない行"], 1)
+        self.assertTrue(any("落札" in b for b in d["食い違い"]), d["食い違い"])
+
+    def test_内訳は升ごとに見る(self):
+        """**全体で1本に畳むと、逆向きの食い違いが打ち消しあう。**
+
+        9月に親が1多く、10月に子が1多いと、足した合計は合ってしまう。
+        """
+        f = aggregate.FAMILIES
+        self.assertEqual(f.check_sums({"結果": 4, "落札": 1, "不調": 3}), [],
+                         "全体で足すと通ってしまう（これが打ち消しあい）")
+        self.assertTrue(f.check_sums({"結果": 3, "落札": 1, "不調": 1}))
+        self.assertTrue(f.check_sums({"結果": 1, "落札": 0, "不調": 2}))
+
+    def test_打ち消しあう食い違いを_kazu_ga_auが拾う(self):
+        """**升ごとに見ていないと、これが通る。**
+
+        `events()` は1行から親と子をちょうど1つずつ出すので、
+        全体で足すと 親 ＝ 子の合計 が恒等的に成り立つ。
+        月をまたいで逆向きにずらすと、合計は合ったまま升は合わない。
+        """
+        rows = [行(status="売却", first_seen="2026-09-01",
+                  open_date="2026-09-10"),
+                行(status="売却", first_seen="2026-10-01",
+                  open_date="2026-10-10", case_no="別")]
+        cells = aggregate.aggregate(rows, with_raw=True)
+        通る = aggregate.kazu_ga_au(rows, cells, today="2026-10-20")
+        self.assertEqual(通る["食い違い"], [], "壊す前から鳴っている")
+
+        # 月をまたいで逆向きにずらす。**全体の合計は変えない**
+        ochi = sorted([c for c in cells if c["stage"] == "落札"],
+                      key=lambda c: c["ym"])
+        self.assertEqual(len(ochi), 2)
+        ochi[0]["_n"] -= 1
+        ochi[1]["_n"] += 1
+        合計 = {}
+        for c in cells:
+            合計[c["stage"]] = 合計.get(c["stage"], 0) + c["_n"]
+        self.assertEqual(合計["結果"], 合計["落札"] + 合計["不調"],
+                         "全体では合っている（これが打ち消しあい）")
+
+        d = aggregate.kazu_ga_au(rows, cells, today="2026-10-20")
+        self.assertTrue(d["食い違い"],
+                        "全体では合うが升ごとには合わない形を拾えていない")
+        self.assertEqual(len(d["内訳"]), 2, d["内訳"])
+
+    def test_実数の無い升を渡したら黙って通さない(self):
+        """`_n` が無いと②は見られない。**飛ばさずに落とす。**"""
+        rows = [行(status="売却", first_seen="2026-09-01",
+                  open_date="2026-10-01")]
+        with self.assertRaises(ValueError):
+            aggregate.kazu_ga_au(rows, aggregate.aggregate(rows),
+                                 today="2026-10-20")
+
+    def test_notcountedに入る行は升が無くてよい(self):
+        """取下げ・消えた・読めない は、升が無くても数えられている。"""
+        rows = [行(status="取下げ", first_seen="", open_date="",
+                  bid_end="", last_seen="")]
+        d = aggregate.kazu_ga_au(rows, today="2026-10-20")
+        self.assertEqual(d["升にならない行"], 0)
+        self.assertEqual(d["食い違い"], [])
+
+    def test_開札より前に消えたのに結果が出ている行を拾う(self):
+        """**これだけが本当の食い違い。**
+
+        消えたあとに結果が出ることはない。どちらかの読みが間違っている。
+        """
+        r = 行(status="売却", open_date="2026-10-01", gone_on="2026-09-18")
+        self.assertTrue(aggregate.yukue_conflicts(r))
+        self.assertEqual(aggregate.kazu_ga_au([r])["食い違う合図"], 1)
+
+    def test_普通の一生を食い違いにしない(self):
+        """**開札が済んで一覧から落ちるのは、食い違いではない。**
+
+        `parse.merge_snapshot()` は、その日の一覧に出てこなかった行すべてに
+        `gone_on` を付ける。売れた物件も不売の物件も、開札が済めば落ちる。
+        ここを食い違いに数えると、結果が溜まるほど毎回鳴る見張りになる
+        （正本 9節「誤報を出す見張りは、そのうち誰も見なくなる」）。
+        """
+        for r in (行(status="売却", open_date="2026-10-01",
+                    gone_on="2026-10-02"),
+                  行(status="不売", open_date="2026-10-01",
+                    gone_on="2026-10-05"),
+                  行(status="取下げ", open_date="2026-10-01",
+                    gone_on="2026-09-18"),
+                  行(status="", open_date="2026-10-01",
+                    gone_on="2026-09-18")):
+            self.assertEqual(aggregate.yukue_conflicts(r), [],
+                             "普通の一生が食い違いになっている: %r" % (r,))
 
     def test_内訳が合わなければ拾う(self):
         rows = [行(status="売却", open_date="2026-10-01")]
