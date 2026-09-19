@@ -457,6 +457,20 @@ workflow から `run:` の本文を取り出して、置き場の名前と印の
 この1本のせいで、1回も通らないまま止まるところだった。
 だから**公開用に push する前に、公開用を clone して、そこで走らせる。**
 
+**そして、走らせたあとにもう一度見る**（2026-09-19）。
+木を作った直後の `check()` は、**そのあと増えたものを見ていない。**
+実際に踏んだ。公開用を clone してテストを通したら、そのテストが
+`data/parse-unknown.md` を書き、**そのまま公開用に1コミット入った。**
+中身はテストが作った架空の1行で、実在の物件・住所・事件番号は
+含まなかったが、置き場が違う。git の履歴からは消えない。
+
+    git clone <公開用> /tmp/pub && cp -r <出した木>/. /tmp/pub/
+    cd /tmp/pub && python3 -m unittest discover -s tests   ← ここで増える
+    python3 scripts/make_public_tree.py --check /tmp/pub   ← **だから最後に見る**
+    cd /tmp/pub && git add -A . && git commit && git push
+
+**作るときと出すときは、別の瞬間。** 作るときに見ただけでは足りない。
+
 ---
 
 ## 5. 情報源（sources.json）

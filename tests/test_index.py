@@ -9,7 +9,9 @@
 """
 
 import os
+import shutil
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -548,9 +550,17 @@ class 数が合わない日はindexを作らない(unittest.TestCase):
 
         升を作る側を差し替えて、まとまりを1つ落とす。
         前はこれで `counts_by_city` が減ったまま通っていた。
+
+        **書き出し先を仮の場所に向ける。** `build()` は落ちる前に
+        「数が合うこと」の章を書くので、向けないと
+        **テストが `data/parse-unknown.md` を本当に書き換える**
+        （2026-09-19、それが公開用の木に1つ混ざった）。
         """
         import aggregate
         本物 = make_index.make_cells
+        元の先 = aggregate.UNKNOWN_PATH
+        d = tempfile.mkdtemp()
+        aggregate.UNKNOWN_PATH = os.path.join(d, "parse-unknown.md")
 
         def 落とす(rows, fields, with_raw=False):
             cells = 本物(rows, fields, with_raw=with_raw)
@@ -562,6 +572,51 @@ class 数が合わない日はindexを作らない(unittest.TestCase):
                 make_index.build([dict(self.行)], today="2026-09-19")
         finally:
             make_index.make_cells = 本物
+            aggregate.UNKNOWN_PATH = 元の先
+            shutil.rmtree(d, ignore_errors=True)
+
+
+class テストはdataを書き換えない(unittest.TestCase):
+    """**テストが置き場を書き換えると、木に混ざる**（2026-09-19）。
+
+    公開用の木を作ったあと、その木でテストを走らせた。
+    テストが index を作る道を通り、その途中で `data/parse-unknown.md` が
+    書かれ、**そのまま公開用に1コミット入った**（中身は架空の1行で、
+    実在の物件・住所・事件番号は含まなかったが、置き場が違う）。
+
+    書き出し先を仮の場所に向けるのを忘れると、また起きる。
+    """
+
+    def test_落ちる道を通っても本物を書かない(self):
+        import aggregate
+        本物 = make_index.make_cells
+        元の先 = aggregate.UNKNOWN_PATH
+        前 = (os.path.getmtime(元の先)
+             if os.path.exists(元の先) else None)
+        d = tempfile.mkdtemp()
+        aggregate.UNKNOWN_PATH = os.path.join(d, "parse-unknown.md")
+
+        def 落とす(rows, fields, with_raw=False):
+            cells = 本物(rows, fields, with_raw=with_raw)
+            return [c for c in cells if c["stage"] != "落札"]
+
+        make_index.make_cells = 落とす
+        try:
+            with self.assertRaises(RuntimeError):
+                make_index.build([{"system": "keibai", "pref": "兵庫県",
+                                   "city": "西宮市", "city_code": "28204",
+                                   "kind": "土地", "first_seen": "2026-09-01",
+                                   "open_date": "2026-09-10",
+                                   "status": "売却"}], today="2026-09-19")
+            self.assertTrue(os.path.exists(aggregate.UNKNOWN_PATH),
+                            "仮の場所にも書かれていない（向け先が効いていない）")
+        finally:
+            make_index.make_cells = 本物
+            aggregate.UNKNOWN_PATH = 元の先
+            shutil.rmtree(d, ignore_errors=True)
+        後 = (os.path.getmtime(元の先)
+             if os.path.exists(元の先) else None)
+        self.assertEqual(前, 後, "テストが %s を書き換えた" % 元の先)
 
 
 if __name__ == "__main__":
