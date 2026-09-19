@@ -292,6 +292,84 @@ class 配る場所は1か所に書く(unittest.TestCase):
                       "DESIGN の棚と site.INDEX_PATH が食い違っている")
 
 
+class つなぎの1枚(unittest.TestCase):
+    """**ドメインを付けた日から、そのドメインは404を返す**（2026-09-19）。
+
+    ドメインを付けるのと、人が見るページを作るのは別の作業。
+    ⓪〜⑤は「ドメインを取り合わない」ための順番で、
+    **中身があるかは見ていない。** 別の問いなので、別に確かめる。
+
+    棚の全体（Phase 3）はまだ作らない。ここは
+    「何のサイトで、誰がやっていて、いつ本番になるか」だけを置く。
+    """
+
+    def setUp(self):
+        self.path = os.path.join(ROOT, "index.html")
+        if not os.path.exists(self.path):
+            self.fail("index.html が無い。ドメインに来た人が404を見る")
+        with open(self.path, encoding="utf-8") as f:
+            self.html = f.read()
+        import re
+        # 注記（<!-- -->）と見た目（<style>）を落とす。
+        # **注記も配られる**ので、禁じた語の検査だけは全文を見る
+        t = re.sub(r"<!--.*?-->", "", self.html, flags=re.S)
+        self.body = re.sub(r"<style\b.*?</style>", "", t, flags=re.S | re.I)
+        # 人が目にする文字だけ（タグを落とす）
+        m = re.search(r"<main\b[^>]*>(.*)</main>", self.body, flags=re.S | re.I)
+        self.text = re.sub(r"<[^>]+>", " ", m.group(1) if m else self.body)
+
+    def test_誰がやっているかが書いてある(self):
+        """正本 7節。**名乗りは1か所から配る**ので、site.json と同じ文字にする。"""
+        d = raw()
+        self.assertIn(d["operator"], self.body)
+        self.assertIn(d["contact_url"], self.body)
+
+    def test_何を数えているかが書いてある(self):
+        for 語 in ("競売", "公売", "大阪府", "兵庫県"):
+            self.assertIn(語, self.body, 語)
+
+    def test_出さないものを出さないと書いてある(self):
+        """**いちばん大事な約束**（正本 1節）。見に来た人に先に伝える。"""
+        self.assertIn("物件そのものの一覧は出しません", self.body)
+
+    def test_配っているファイルへ行ける(self):
+        self.assertIn('href="%s"' % site.INDEX_PATH, self.body,
+                      "配っているものへの道が無い")
+
+    def test_売り文句を書かない(self):
+        """正本 3.3。**書くのは「何を数えているか」だけ。**"""
+        for 語 in ("狙い目", "安く買える", "穴場", "お得", "儲か"):
+            self.assertNotIn(語, self.html, 語)
+
+    def test_まだ試作だと書いてある(self):
+        """**言わないと、本番の顔で読まれる。**"""
+        self.assertIn("試作版", self.body)
+
+    def test_よそのサーバーを読み込まない(self):
+        """**人が見るだけのページに、よそのサーバーを混ぜない。**
+
+        リンクは行き先なので別。読み込むもの（script・link・img）を見る。
+        """
+        import re
+        for tag in re.findall(r"<(script|link|img)\b[^>]*>", self.html, re.I):
+            self.fail("外から読み込んでいる: %s" % tag)
+
+    def test_公開用の木に入る(self):
+        """入れ忘れると、**直したのに404のまま**になる。"""
+        try:
+            import scripts.make_public_tree as m
+        except ImportError:
+            self.skipTest("許可リストは金庫にしかない（公開用では、これが正しい）")
+        self.assertIn("index.html", m.FILES)
+
+    def test_数を書かない(self):
+        """**書くと data/index.json と2か所になって、片方だけ古くなる。**"""
+        import re
+        for n in re.findall(r"[0-9]{2,}", self.text):
+            self.fail("人が読む文字に数がある（%s）。"
+                      "配っているファイルを見てもらう" % n)
+
+
 class 退役した名前(unittest.TestCase):
     """**退役した名前の一覧と比べる。現在値と比べない**（正本 9節）。
 

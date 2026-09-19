@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<!--
+  つなぎの1枚（2026-09-19）。
+
+  **ドメインを付けた日から、そのドメインは404を返す。**
+  ドメインを付けるのと、人が見るページを作るのは別の作業で、
+  作り直す順番の⓪〜⑤は「ドメインを取り合わない」ための順番だった。
+  **中身があるかは見ていない。** 別の問いなので、別に確かめる。
+
+  棚の全体（Phase 3）はまだ作らない。ここは「何のサイトで、誰がやっていて、
+  いつ本番になるか」だけを置く。
+
+  **数を書かない。** 書くと data/index.json と2か所になって、片方だけ古くなる。
+  数は配っているファイルのほうを見てもらう。
+
+  **売り文句にしない**（正本 3.3）。書くのは「何を数えているか」だけ。
+  禁じている語そのものは、ここにも書かない。**このファイルは配られる。**
+
+  外から何も読み込まない。人が見るだけのページに、よそのサーバーを混ぜない。
+-->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>競売・公売の統計（試作版）｜鯨屋</title>
+<meta name="description" content="大阪府と兵庫県で、裁判所の競売と自治体の公売に出た土地・建物の件数を毎日ためて数字にしています。試作版です。">
+<style>
+  :root {
+    --bg: #fbfaf7;
+    --fg: #23201c;
+    --muted: #5d574e;
+    --line: #ddd7cc;
+    --link: #1c5d8c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1815;
+      --fg: #e9e4db;
+      --muted: #a8a096;
+      --line: #3a352e;
+      --link: #7ab6de;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 3rem 16px 4rem;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    line-height: 1.85;
+    font-size: 16px;
+  }
+  main { max-width: 34rem; margin: 0 auto; }
+  h1 { font-size: 1.5rem; line-height: 1.5; margin: 0 0 .25rem; font-weight: 700; }
+  .tag {
+    display: inline-block; margin-bottom: 2rem;
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: .1rem .7rem; font-size: .8rem; color: var(--muted);
+  }
+  h2 { font-size: .95rem; margin: 2.5rem 0 .5rem; color: var(--muted); font-weight: 600; }
+  p { margin: 0 0 1rem; }
+  a { color: var(--link); }
+  dl { margin: 0; }
+  dt { font-size: .85rem; color: var(--muted); margin-top: .75rem; }
+  dd { margin: 0; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: .9em; word-break: break-all;
+  }
+  footer {
+    margin-top: 3rem; padding-top: 1.25rem;
+    border-top: 1px solid var(--line);
+    font-size: .85rem; color: var(--muted);
+  }
+</style>
+</head>
+<body>
+<main>
+
+  <h1>競売・公売の統計</h1>
+  <span class="tag">試作版・準備中</span>
+
+  <p>大阪府と兵庫県で、<strong>差し押さえられた土地や建物が売られる</strong>情報を毎日ためて、数字にしています。裁判所の<strong>競売</strong>と、税金の滞納による<strong>公売</strong>の2つです。</p>
+
+  <p>出しているのは<strong>市区町村ごとの件数</strong>だけです。物件そのものの一覧は出しません。入札中の情報で、人が住んでいる建物を含むからです。</p>
+
+  <h2>いま出せるもの</h2>
+
+  <p>数えた結果は、いまのところ機械向けのファイルだけで配っています。</p>
+
+  <p><a href="data/index.json"><code>data/index.json</code></a></p>
+
+  <p>人が読む棚（市区町村ごとのページ）は、これから作ります。まだ日付は決めていません。</p>
+
+  <h2>運営者</h2>
+
+  <dl>
+    <dt>運営</dt>
+    <dd>鯨屋（くじらや）</dd>
+    <dd>大阪府・兵庫県で行政が公開する一次情報を、消える前に記録しています。</dd>
+    <dt>連絡先</dt>
+    <dd><a href="https://forms.gle/pp93tSJ5p8SAMEMk8">お問い合わせフォーム</a>（7日以内にご返信します）</dd>
+  </dl>
+
+  <footer>
+    <p>姉妹サイトに<a href="https://ogataten-nippo.com/">大型店日報</a>があります。</p>
+    <p>元になっているのは、裁判所と自治体が公開している情報です。取りに行くのは1日1回で、相手のサーバーの決まり（robots.txt）に従っています。</p>
+  </footer>
+
+</main>
+</body>
+</html>
