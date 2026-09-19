@@ -15,6 +15,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from common import addr  # noqa: E402  内側（_clean）を見る検査があるため
 from common.addr import city_code, kanji_to_int, normalize, to_city  # noqa: E402
 
 
@@ -157,6 +158,54 @@ class 住所をそろえる(unittest.TestCase):
         self.assertEqual(r["addr_key"], "")
         self.assertEqual(r["addr_key_town"], "")
         self.assertEqual(r["city_code"], "27127")
+
+
+class 空白が挟まっても同じ鍵になる(unittest.TestCase):
+    """**空白の落とし方が遅れていた**（2026-09-19）。
+
+    前は「丁目・番地・番・号をハイフンにする」4本より**後ろ**で空白を
+    落としていた。すると空白が挟まった住所で4本が1本も当たらない。
+
+        空白なし  梅田1丁目1番1号  → 町丁目 梅田1
+        空白あり  梅田 1 丁目…     → 町丁目 **梅田1丁目**
+
+    同じ場所が2つの鍵に割れて、姉妹サイトとつながらない。
+    しかも `梅田1丁目` という形は町丁目の一覧には無いので、
+    **あとから当て直すこともできない。**
+    """
+
+    def 町丁目(self, 住所):
+        return addr.normalize("大阪府", "大阪市北区", 住所)
+
+    def test_半角の空白が挟まっても同じ(self):
+        a = self.町丁目("梅田1丁目1番1号")
+        b = self.町丁目("梅田 1 丁目 1 番 1 号")
+        self.assertEqual(a["town"], "梅田1")
+        self.assertEqual(b["town"], a["town"])
+        self.assertEqual(b["addr_key_town"], a["addr_key_town"])
+        self.assertEqual(b["addr_key"], a["addr_key"])
+
+    def test_全角の空白と漢数字が混ざっても同じ(self):
+        """**空白を「一」と「丁目」のあいだに置く。**
+
+        `梅田　一丁目` のように漢数字の手前に置いた形だと、
+        漢数字を直す規則の先読み `(?=丁目)` がそのまま当たって①が通る。
+        **直しを外しても鳴らない。** 鳴る位置に置いてある。
+        """
+        a = self.町丁目("梅田1丁目1番1号")
+        b = self.町丁目("梅田　一　丁目　1番1号")
+        self.assertEqual(b["town"], a["town"])
+        self.assertEqual(b["addr_key_town"], a["addr_key_town"])
+
+    def test_丁目の字が町丁目に残らない(self):
+        """`梅田1丁目` の形で出ると、町丁目の一覧のどれとも当たらない。"""
+        for 住所 in ("梅田 1 丁目 1 番 1 号", "梅田　一　丁目　1番1号"):
+            self.assertNotIn("丁目", self.町丁目(住所)["town"], 住所)
+
+    def test_号のうしろの建物名を番地の続きにしない(self):
+        """空白を先に落としても、ここは前と同じであること。"""
+        self.assertEqual(addr._clean("1号 グランフロント大阪"),
+                         "1グランフロント大阪")
 
 
 class 収集先の市を住所に被せない(unittest.TestCase):

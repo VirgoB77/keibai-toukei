@@ -54,6 +54,71 @@ class 法人か個人かを見分ける(unittest.TestCase):
         self.assertEqual(privacy.party_for_index("株式会社あ"), "株式会社あ")
 
 
+class 丸めたつもりで丸まっていない(unittest.TestCase):
+    """**番地のうしろに何か付いている住所**（2026-09-19）。
+
+    `addr` には建物名や2つ目の地番が残る（`common/addr.py` はわざと残す）。
+    そこで丸め方が2つとも開いていた。
+
+        後ろから探していた    町名が建物名にもう一度出ると、切る位置が飛ぶ
+        末尾の数字だけ落とす  うしろに文字があると、1つも落ちない
+
+    どちらも**丸めたつもりで地番がそのまま出る**。
+    `records` が0件だから出ていないだけで、個票を出す日に効く。
+    実データ106行のうち、番地のうしろに何か付いているのは15行。
+    """
+
+    def test_町名が建物名にもう一度出ても_前で切る(self):
+        self.assertEqual(
+            privacy.to_town("大阪市北区梅田1-1-1梅田1館", "梅田1"),
+            "大阪市北区梅田1")
+
+    def test_地番が2つ並んでも落ちる(self):
+        # 実データの形。「東大阪市吉田6-627-3、627-13」
+        self.assertEqual(
+            privacy.to_town("東大阪市吉田6-627-3、627-13", "吉田6"),
+            "東大阪市吉田6")
+        self.assertEqual(
+            privacy.to_town("東大阪市吉田6-627-3、627-13", ""),
+            "東大阪市吉田")
+
+    def test_建物名と部屋番号が付いていても落ちる(self):
+        self.assertEqual(
+            privacy.to_town("大阪市北区梅田1-1-1ハイツ101", ""),
+            "大阪市北区梅田")
+
+    def test_町丁目がこの住所のものでなければ_きつい側に倒す(self):
+        """渡された町丁目が当たらないとき、**切らずに出さない。**"""
+        self.assertEqual(
+            privacy.to_town("大阪市北区南森町1-1-1ローレルコート本町", "本町"),
+            "大阪市北区南森町")
+
+    def test_見つからないときに市区町村名を消さない(self):
+        """前は町丁目だけを返していた。**どこの町か分からなくなる。**"""
+        self.assertEqual(
+            privacy.to_town("西宮市上ケ原2番町3-5", "上ケ原二番町"),
+            "西宮市上ケ原2番町")
+
+    def test_町名の中の数字は残す(self):
+        for 住所, 町 in (("西宮市甲子園7番町1-2-3", ""),
+                         ("西宮市甲子園7番町1-2-3", "甲子園7番町"),
+                         ("札幌市北区北12条西1-1-1", "")):
+            self.assertIn("甲子園7番町" if "甲子園" in 住所 else "北12条西",
+                          privacy.to_town(住所, 町), (住所, 町))
+
+    def test_個票の道でも地番が出ない(self):
+        """入口は `redact_addr`。individual のときだけここを通る。"""
+        self.assertEqual(
+            privacy.redact_addr("大阪市北区梅田1-1-1梅田1館",
+                                privacy.INDIVIDUAL, "梅田1"),
+            "大阪市北区梅田1")
+        # 個人でなければ地番まで出してよい（正本 5節）
+        self.assertEqual(
+            privacy.redact_addr("大阪市北区梅田1-1-1梅田1館",
+                                privacy.CORP, "梅田1"),
+            "大阪市北区梅田1-1-1梅田1館")
+
+
 class 住所を丸める(unittest.TestCase):
 
     def test_個人のときだけ町丁目に丸める(self):
