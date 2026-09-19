@@ -1,7 +1,7 @@
 {
  "site": "keibai-toukei",
  "site_name": "競売統計",
- "generated_at": "2026-09-19",
+ "generated_at": "2026-09-20",
  "observed": {
   "競売": {
    "from": "2026-09-17",
@@ -749,6 +749,7 @@
  ],
  "not_counted": {
   "unresolved": 0,
+  "unobserved": 0,
   "undecided": 1,
   "gone": 0
  }

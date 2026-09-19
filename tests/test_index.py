@@ -754,15 +754,65 @@ class 原因の違うものを1つの欄に入れない(unittest.TestCase):
         self.assertEqual(
             make_index.not_counted(rows, "2026-09-19")["unresolved"], 0)
 
-    def test_開札日が過ぎると読めないに入る(self):
-        """**いまはこうなる、を留めておく。**
+    def test_開札日が過ぎたら見に行っていないに入る(self):
+        """**答えが来たので分けた**（正本 6節・2026-09-19）。
 
-        減らせない穴なので、答えが来たら分ける。
-        分けた日にこの検査が落ちる。**落ちるのが正しい。**
+        前はここが `unresolved` だった。**分けた日にこの検査が落ちた。
+        落ちるのが正しかった。**
+
+            unresolved  取りに行って、読んだが語が分からなかった → 語彙を足す
+            unobserved  決めるのに要るページを取りに行っていない → 出どころを足す
         """
         rows = [self.行(i, "2026-11-05") for i in range(3)]
-        self.assertEqual(
-            make_index.not_counted(rows, "2026-12-25")["unresolved"], 3)
+        got = make_index.not_counted(rows, "2026-12-25")
+        self.assertEqual(got["unobserved"], 3)
+        self.assertEqual(got["unresolved"], 0,
+                         "取りに行っていないものを「読めなかった」と言っている")
+
+    def test_4つとも必ず出す(self):
+        """**欠けているキーは0ではない**（正本 6節）。
+
+        3つしか出さないサイトが1つでもあると、横断で読む側は
+        「0」と「このサイトは数えていない」を見分けられない。
+        """
+        for きょう in ("2026-09-19", "2026-12-25"):
+            got = make_index.not_counted(
+                [self.行(0, "2026-11-05")], きょう)
+            self.assertEqual(sorted(got),
+                             ["gone", "undecided", "unobserved", "unresolved"],
+                             きょう)
+
+    def test_語が書いてあれば語彙の穴のほう(self):
+        """**読めた語と、読んでいない欄は別**（正本 6節・2026-09-19）。
+
+        「取消」のように**読めたが置き場の無い語**は `unresolved`。
+        欄が空のまま開札日が過ぎたものだけが `unobserved`。
+
+        最初、こちらは制度だけで分けていた。**粗すぎた。**
+        `取消` が「見に行っていない」に落ちて、
+        `data/parse-unknown.md` から消えるところだった。
+        """
+        r = dict(self.行(0, "2026-11-05"), status="取消")
+        got = make_index.not_counted([r], "2026-12-25")
+        self.assertEqual(got["unresolved"], 1)
+        self.assertEqual(got["unobserved"], 0)
+
+    def test_読み取りを書いたら語彙の穴に移る(self):
+        """**KEKKA_YOMERU に足した日から、意味が変わる。**
+
+        出どころと読み取りができた制度は、欄が空でも「読んだのに無かった」。
+        そこで初めて「語を足す」が効く。
+        """
+        import aggregate
+        keep = aggregate.KEKKA_YOMERU
+        try:
+            aggregate.KEKKA_YOMERU = ("keibai",)
+            got = make_index.not_counted(
+                [self.行(0, "2026-11-05")], "2026-12-25")
+            self.assertEqual(got["unresolved"], 1)
+            self.assertEqual(got["unobserved"], 0)
+        finally:
+            aggregate.KEKKA_YOMERU = keep
 
     def test_結果の読み取りはまだ無い(self):
         """**これが「減らせない」の根拠。**

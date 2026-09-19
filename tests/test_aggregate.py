@@ -137,10 +137,56 @@ class 黙って捨てない(unittest.TestCase):
         self.assertEqual([c["stage"] for c in cells], [])
 
     def test_決まらなかったことは印で分かる(self):
-        # **開札日が過ぎている**のに、どの結果にも入らない語
+        """**開札日が過ぎている**のに、どの結果にも入らない語。
+
+        2026-09-19 に2つに割った（正本 6節）。
+
+            unresolved  取りに行って、読んだが語が分からなかった → 語彙を足す
+            unobserved  決めるのに要るページを取りに行っていない → 出どころを足す
+
+        **減らす手が違うので、同じ箱に入れない。**
+        どちらになるかは `KEKKA_YOMERU`（結果を読めている制度）で決まる。
+        """
+        # **語が書いてある** → 読めている。置き場が無いだけ＝語彙の穴
         row = 行(status="読めない語", first_seen=None, open_date="2026-09-01")
         del row["first_seen"]
         self.assertTrue(aggregate.unresolved(row, today="2026-09-19"))
+        self.assertFalse(aggregate.unobserved(row, today="2026-09-19"))
+        self.assertEqual(aggregate.yukue(row, "2026-09-19"), "読めない")
+
+        # **欄が空** → 結果のページを取りに行っていない＝出どころの穴
+        空 = 行(status="", first_seen=None, open_date="2026-09-01",
+               case_no="空欄")
+        del 空["first_seen"]
+        self.assertFalse(aggregate.unresolved(空, today="2026-09-19"))
+        self.assertTrue(aggregate.unobserved(空, today="2026-09-19"))
+        self.assertEqual(aggregate.yukue(空, "2026-09-19"), "見に行っていない")
+
+        keep = aggregate.KEKKA_YOMERU
+        try:
+            # 結果を読めている制度なら、空欄も「読んだのに無かった」＝語彙の穴
+            aggregate.KEKKA_YOMERU = (空["system"],)
+            self.assertTrue(aggregate.unresolved(空, today="2026-09-19"))
+            self.assertFalse(aggregate.unobserved(空, today="2026-09-19"))
+        finally:
+            aggregate.KEKKA_YOMERU = keep
+
+    def test_読めないと見に行っていないは同時に立たない(self):
+        """**割ったあとも、2つに同時に入らない。**"""
+        for row in (行(status="読めない語", open_date="2026-09-01"),
+                    行(status="", open_date="2026-09-01", case_no="空欄")):
+            self.確かめる(row)
+
+    def 確かめる(self, row):
+        for 制度 in ((), (row["system"],)):
+            keep = aggregate.KEKKA_YOMERU
+            try:
+                aggregate.KEKKA_YOMERU = 制度
+                当たった = [aggregate.unresolved(row, "2026-09-19"),
+                            aggregate.unobserved(row, "2026-09-19")]
+                self.assertEqual(sum(1 for x in 当たった if x), 1, 制度)
+            finally:
+                aggregate.KEKKA_YOMERU = keep
 
     def test_不明という段階を作らない(self):
         self.assertFalse(hasattr(aggregate, "FUMEI"))
@@ -432,10 +478,17 @@ class 段階は3つのまま(unittest.TestCase):
         """
         yomenai = 行(status="執行停止", open_date="2026-09-01")
         okiba = 行(status="取下げ", open_date="2026-09-01")
-        self.assertTrue(aggregate.unresolved(yomenai, today="2026-09-19"))
-        self.assertFalse(aggregate.undecided(yomenai))
-        self.assertFalse(aggregate.unresolved(okiba, today="2026-09-19"))
-        self.assertTrue(aggregate.undecided(okiba))
+        # **結果を取りに行っている制度として見る**（2026-09-19 に割った）。
+        # 取りに行っていなければ `unobserved` で、そちらは語彙の穴ではない
+        keep = aggregate.KEKKA_YOMERU
+        try:
+            aggregate.KEKKA_YOMERU = (yomenai["system"],)
+            self.assertTrue(aggregate.unresolved(yomenai, today="2026-09-19"))
+            self.assertFalse(aggregate.undecided(yomenai))
+            self.assertFalse(aggregate.unresolved(okiba, today="2026-09-19"))
+            self.assertTrue(aggregate.undecided(okiba))
+        finally:
+            aggregate.KEKKA_YOMERU = keep
 
 
 class 取下げと繰り越しは別物(unittest.TestCase):
@@ -559,8 +612,13 @@ class 足したときに数が合うこと(unittest.TestCase):
                 行(status="", open_date="2099-01-01"),
                 行(status="よく分からない語", open_date="2026-10-01")]
         got = [aggregate.yukue(r, today="2026-10-20") for r in rows]
+        # 最後の1行は「よく分からない語」。**語が書いてあるので読めている。**
+        # 置き場が無いだけなので語彙の穴（正本 6節・2026-09-19）
         self.assertEqual(got, ["落札", "不調", "取下げ", "消えた", "待ち",
                                "読めない"])
+        # **欄が空のまま開札日が過ぎた行**が「見に行っていない」
+        空 = 行(status="", open_date="2026-10-01", case_no="空欄")
+        self.assertEqual(aggregate.yukue(空, "2026-10-20"), "見に行っていない")
 
     def test_行方を足すと見た行の数になる(self):
         rows = [行(status="売却", first_seen="2026-09-01",
@@ -570,8 +628,14 @@ class 足したときに数が合うこと(unittest.TestCase):
                   open_date="2099-01-01")]
         d = aggregate.kazu_ga_au(rows, today="2026-10-20")
         # **合計＝行の数は恒真**（`yukue()` が必ず1つ返すので）。
-        # 恒真を assert しても何も確かめていないので、**中身**を見る
-        self.assertEqual(d["行方"], {"落札": 1, "取下げ": 1, "待ち": 1})
+        # 恒真を assert しても何も確かめていないので、**中身**を見る。
+        # **起きなかった語も0で並ぶ**（正本 6節・2026-09-19）。
+        # 欄ごと消えると「0件だった」と「数えていない」が見分けられない
+        self.assertEqual(d["行方"], {"落札": 1, "不調": 0, "取下げ": 1,
+                                     "消えた": 0, "見に行っていない": 0,
+                                     "読めない": 0, "待ち": 1})
+        self.assertEqual(sum(d["行方"].values()), len(rows))
+        self.assertEqual(sorted(d["行方"]), sorted(aggregate.YUKUE))
         self.assertEqual(d["食い違い"], [])
 
     def test_升が1つもできない行を拾う(self):
@@ -918,18 +982,24 @@ class not_countedが非0になる道(unittest.TestCase):
     """**3つの欄が非0になる経路を、どのテストも通っていなかった。**
 
     `YUKUE_KEY` から欄を1つ落としても428本が緑のままだった。
-    正本6節が名前を決めた3つなので、**非0になる道を固定する。**
+    正本6節が名前を決めた4つなので、**非0になる道を固定する**
+    （2026-09-19 に `unobserved` が増えて4つになった）。
     """
 
-    def test_3つとも非0にできる(self):
+    def test_4つとも非0にできる(self):
         import make_index
         rows = [行(status="取下げ", first_seen="2026-09-01"),
                 行(status="", first_seen="2026-09-01", gone_on="2026-09-18",
                   case_no="別"),
                 行(status="よく分からない語", first_seen="2026-09-01",
-                  open_date="2026-09-01", case_no="別2")]
+                  open_date="2026-09-01", case_no="別2"),
+                行(status="", first_seen="2026-09-01",
+                  open_date="2026-09-01", case_no="別3")]
+        # 3件目は**語が書いてある**（読めたが置き場が無い）→ unresolved
+        # 4件目は**欄が空のまま開札日が過ぎた**（取りに行っていない）→ unobserved
         got = make_index.not_counted(rows, today="2026-09-19")
-        self.assertEqual(got, {"unresolved": 1, "undecided": 1, "gone": 1})
+        self.assertEqual(got, {"unresolved": 1, "unobserved": 1,
+                               "undecided": 1, "gone": 1})
 
     def test_欄を落としたら合計が行と合わなくなる(self):
         """**欄が1つ落ちると、3つの合計が行方の数と合わない。**"""

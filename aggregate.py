@@ -324,7 +324,61 @@ def unresolved(row, today=None):
         return False        # 消えた行は語彙の穴ではない。gone() が拾う
     status = row.get("status") or ""
     # 取下げは**読めている**（置き場が決まっていないだけ）。undecided() が拾う
-    return not (status in SOLD or status in UNSOLD or status in WITHDRAWN)
+    if status in SOLD or status in UNSOLD or status in WITHDRAWN:
+        return False
+    # **語が書いてあるなら、読めている**（正本 6節・2026-09-19）。
+    # 「取消」のように、読めたが置き場の無い語がここに来る。
+    # 欄が空なら、そもそも結果を読んでいない。`unobserved()` が拾う
+    if status:
+        return True
+    # 欄が空で、結果のページを取りに行っている制度なら、
+    # 読んだのに結果が無かったということ。これも語彙の穴
+    return row.get("system") in KEKKA_YOMERU
+
+
+def unobserved(row, today=None):
+    """決めるのに要るページを、**まだ取りに行っていない**。
+
+    `unresolved`（読めなかった）は**試したという主張**になる。
+    試していないものを、そう名乗らない（正本 6節・2026-09-19）。
+
+        unresolved  取りに行って、読んだが語が分からなかった → 語彙を足す
+        unobserved  決めるのに要るページを取りに行っていない → 出どころを足す
+
+    **減らす手が違うので、同じ箱に入れない。**
+
+    実測（2026-09-19）。競売の結果は1枚も取りに行っていないので、
+    開札日が過ぎた行はここへ来る。
+
+        2026-09-19    0 件（開札日が全部先）
+        2026-10-03   37 件
+        2026-12-25  105 件（106行のうち）
+
+    **語が書いてあるなら、ここには来ない。**「取消」のように読めたが
+    置き場の無い語は `unresolved` のほう（読めている。語彙の穴）。
+    ここに来るのは**欄が空のまま開札日が過ぎた**行だけ。
+
+    **一覧では見ている行だけを数える。** 一覧そのものを見ていない行は
+    ここに入れない（それは出どころの表の話）。この行たちは公告の升に
+    入っているので、**分母には入る**。
+    """
+    ym2 = month_result(row)
+    if not ym2:
+        return False
+    # 開札日がまだ来ていない回は、取りに行っていないのではなく**まだ起きていない**
+    day = row.get("open_date") or ""
+    if day and day > (today or jst_today().isoformat()):
+        return False
+    if gone(row):
+        return False
+    status = row.get("status") or ""
+    if status in SOLD or status in UNSOLD or status in WITHDRAWN:
+        return False
+    # **語が書いてあるなら、読めている。** 置き場が無いだけなので語彙の穴。
+    # ここに来るのは**欄が空のまま開札日が過ぎた**行だけ
+    if status:
+        return False
+    return row.get("system") not in KEKKA_YOMERU
 
 
 # ---------------------------------------------------------------- 数が合うこと
@@ -357,16 +411,39 @@ def unresolved(row, today=None):
 #   落札・不調  結果が出た。**いちばん強い**（開札まで行った）
 #   取下げ      手続きが止まった（index.json の not_counted.undecided）
 #   消えた      一覧から消えた。取下げか繰り越しか未確定（同 gone）
-#   読めない    開札日が過ぎたのに結果が読めない（同 unresolved）
+#   見に行っていない  決めるのに要るページを、まだ取りに行っていない（同 unobserved）
+#   読めない    取りに行って、読んだが語が分からなかった（同 unresolved）
 #   待ち        まだ開札を迎えていない。**落ちているのではない**
+#
+# **「見に行っていない」を「読めない」より先に見る**（正本 6節・2026-09-19）。
+# 2つは排他だが（下の KEKKA_YOMERU で分かれる）、**どちらを先に見るかを書く**。
+# 先に来るのは原因が外にあるほう。語をいくつ足しても減らないのはこちら。
 #
 # **「待ち」は正本の3つに無い、4つめ。** 実データでは106行のうち105行が
 # ここに入る。これを数えないと①が閉じない。index.json には出していない
 # （欄の名前は正本6節が決める。勝手に足さない。正本 11節）。
-YUKUE = ("落札", "不調", "取下げ", "消えた", "読めない", "待ち")
+YUKUE = ("落札", "不調", "取下げ", "消えた", "見に行っていない", "読めない", "待ち")
 
-# index.json の not_counted の欄に対応する行方（正本 6節で名前が決まった3つ）
-YUKUE_KEY = {"取下げ": "undecided", "消えた": "gone", "読めない": "unresolved"}
+# index.json の not_counted の欄に対応する行方（正本 6節で名前が決まった4つ）
+YUKUE_KEY = {"取下げ": "undecided", "消えた": "gone",
+             "見に行っていない": "unobserved", "読めない": "unresolved"}
+
+# **結果のページを取りに行って、読めている制度。**
+#
+# ここに無い制度は、開札日が過ぎても「読めなかった」ではなく
+# **「見に行っていない」**（正本 6節・2026-09-19）。
+#
+#     unresolved  取りに行って、読んだが語が分からなかった → こちらが語彙を足す
+#     unobserved  決めるのに要るページを、まだ取りに行っていない → こちらが出どころを足す
+#
+# **減らす手が違うので、同じ箱に入れない。**
+# 語をいくつ足しても `unobserved` は1件も減らない。
+#
+# いまは空。競売の結果は `bit-result` が画面遷移 POST で URL を持たず
+# `enabled: false`、読み取りも無い（`parse.INBOX_READABLE`）。
+# **読み取りを書いた日に、ここへ足す。**
+# 忘れると `unobserved` のまま止まるので、検査で留めてある。
+KEKKA_YOMERU = ()
 
 
 def yukue(row, today=None):
@@ -384,6 +461,9 @@ def yukue(row, today=None):
         return "取下げ"
     if gone(row):
         return "消えた"
+    # **「見に行っていない」を先に見る。** 原因が外にあるほうが先
+    if unobserved(row, today):
+        return "見に行っていない"
     if unresolved(row, today):
         return "読めない"
     return "待ち"
@@ -469,7 +549,11 @@ def kazu_ga_au(rows, cells=None, today=None, cell_rows=None):
     （正本 9節「誤報を出す見張りは、そのうち誰も見なくなる」）。
     `cell_rows` を渡さなければ `rows` と同じ。
     """
-    yuk, no_cell, kasanari = {}, [], []
+    # **行方の語は全部並べる。0でも出す**（正本 6節・2026-09-19）。
+    # 起きなかった語が欄ごと消えると、「0件だった」と
+    # 「そもそも数えていない」が見分けられない。**欠けているキーは0ではない。**
+    yuk = {y: 0 for y in YUKUE}
+    no_cell, kasanari = [], []
     for r in rows:
         y = yukue(r, today)
         yuk[y] = yuk.get(y, 0) + 1
