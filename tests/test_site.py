@@ -332,6 +332,31 @@ class つなぎの1枚(unittest.TestCase):
         """**いちばん大事な約束**（正本 1節）。見に来た人に先に伝える。"""
         self.assertIn("物件そのものの一覧は出しません", self.body)
 
+    def test_同じ語で別のものを名指しで外す(self):
+        """**「公売」には2つある。**
+
+        滞納処分による公売（ここで扱う）と、
+        公有財産の売却（市や県が自分の土地を売る。ここでは扱わない）。
+
+        「税金の滞納による公売」と書けば読み分けられる。
+        **書いてあっても、読む人は自分の知っているほうで読む。**
+        実物で迷われた（2026-09-19）。**出さないほうを名指しする。**
+        """
+        self.assertIn("公有財産の売却", self.text)
+        self.assertIn("ここでは扱いません", self.text)
+
+    def test_検索に出る文にも同じ書き分けがある(self):
+        """**1枚の中で言い方が2つあると、片方だけ直る。**
+
+        `description` は検索結果に出る文で、本文より先に読まれることがある。
+        """
+        import re
+        m = re.search(r'<meta name="description" content="([^"]*)"', self.body)
+        self.assertIsNotNone(m, "description が無い")
+        文 = m.group(1)
+        self.assertIn("税金の滞納による公売", 文)
+        self.assertIn("公有財産の売却", 文)
+
     def test_配っているファイルへ行ける(self):
         self.assertIn('href="%s"' % site.INDEX_PATH, self.body,
                       "配っているものへの道が無い")
