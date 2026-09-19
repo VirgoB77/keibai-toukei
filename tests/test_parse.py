@@ -691,5 +691,84 @@ class 台帳は中身が取れたものだけ(unittest.TestCase):
         self.assertEqual(self.台帳(), [])
 
 
+# BITのページ送り。**目に見えない文字**が実物と同じ形で入っている。
+# 最後のカードの「中止情報」が空のまま終わり、そのすぐ後ろにこれが来る。
+PAGER_HTML = """<html><body>
+<h2>競売物件検索結果一覧</h2>
+<div class="card">
+  <span class="badge">マンション</span>
+  <a href="/app/detail/pd001/h03?courtId=33332">神戸地裁姫路支部　令和08年(ケ)第99号</a>
+  <p>期間入札</p>
+  <table>
+    <tr><th>閲覧開始日</th></tr><tr><td>令和08年08月12日</td></tr>
+    <tr><th>入札期間</th></tr><tr><td>令和08年10月21日〜令和08年10月29日</td></tr>
+    <tr><th>開札期日</th></tr><tr><td>令和08年11月05日</td></tr>
+  </table>
+  <p>売却基準価額 <span>1,710,000円</span></p>
+  <p>買受申出保証金 <span>342,000円</span></p>
+  <p>姫路市安元１１２番1</p>
+  <ul>
+    <li><div class="bit__result_InfoHeader p-2">物件番号．種別</div>
+        <div class="px-2 py-3">1．マンション</div></li>
+    <li><div class="bit__result_InfoHeader p-2">中止情報</div>
+        <div class="px-2 py-3"><span class="bit__text_red"></span></div></li>
+  </ul>
+</div>
+<nav class="bit__pager" aria-label="Page navigation">
+  <div class="pagination">
+    <div class="page-item disabled">
+      <a class="page-link" href="#" onclick="getData(1);" aria-label="first">
+        <span class="bit__pager_first" aria-hidden="true"></span>
+        <span class="sr-only">first</span>
+      </a>
+    </div>
+    <div class="page-item">
+      <a class="page-link" href="#" onclick="getData(2);" aria-label="last">
+        <span class="bit__pager_last" aria-hidden="true"></span>
+        <span class="sr-only">last</span>
+      </a>
+    </div>
+  </div>
+</nav>
+</body></html>"""
+
+
+class 画面読み上げ用の文字を値にしない(unittest.TestCase):
+    """ページ送りの `<span class="sr-only">first</span>` は欄の値ではない。
+
+    実物で 106行のうち6行の「中止情報」が `first` になっていた
+    （1ページにつき1行、最後のカード。ページ数と同じ6）。
+
+    `first` は中止情報の語ではないので段階は動かない。**そこが怖い。**
+    値が入っているので誰も空だと気づかず、
+    **その6行の本当の中止情報は読めていない**まま通る。
+    取下げは中止情報の欄にしか出ないので、取下げを見落とす形になる。
+
+    語の一覧では守れない（`first` `last` `Next` … を並べても次の語で漏れる）。
+    **目に見えない文字だ、という形のほうで弾く。**
+    """
+
+    def setUp(self):
+        self.rows, self.unknown = parse.parse_bit_list(
+            PAGER_HTML, "33332", "https://example/x", "2026-09-17")
+
+    def test_中止情報が空のまま終わっても次の文字が入らない(self):
+        self.assertEqual(len(self.rows), 1)
+        self.assertEqual(self.rows[0]["status_raw"], "")
+        self.assertEqual(self.rows[0]["status"], "")
+
+    def test_ページ送りの文字がどの欄にも入らない(self):
+        # 中止情報だけを見張ると、次に別の欄が待っていたときに漏れる
+        for r in self.rows:
+            for k, v in r.items():
+                if isinstance(v, str):
+                    self.assertNotIn("first", v, k)
+                    self.assertNotIn("last", v, k)
+
+    def test_ページ送りは知らない見出しとしても出さない(self):
+        # 「読めなかった」ではなく「読む対象ではない」。催促の紙を鳴らし続けない
+        self.assertFalse([u for u in self.unknown if "first" in u or "last" in u])
+
+
 if __name__ == "__main__":
     unittest.main()

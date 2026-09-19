@@ -435,6 +435,46 @@ class 公開用のworkflowの控え(unittest.TestCase):
         self.assertNotIn("python3 -m unittest", self.body,
                          "**急いだ日に打つ形。** check.sh を通すこと")
 
+    def test_配られている実物を1回見る(self):
+        """**手前の検査は全部「出すつもりのもの」しか見ていない。**
+
+        Pages が建てるのをやめても、途中で別のものを配っても、
+        木の検査も許可リストも、そのまま緑になる。
+        **配られている実物を取りに行く段が、1つだけ要る。**
+        """
+        self.assertIn("配られている実物を見る", self.body)
+        配信 = self.body[self.body.index("配られている実物を見る"):]
+        self.assertIn("site_url", 配信)
+        self.assertIn("index.json", 配信)
+        self.assertIn("curl", 配信)
+
+    def test_配られている実物で個票が無いことを見る(self):
+        """**いちばん出してはいけないもの**を、実物のほうで数える（正本 1節）。
+
+        200 が返ったことだけを見ると、
+        「配信は生きているが中身が入れ替わっている」を通す。
+        """
+        配信 = self.body[self.body.index("配られている実物を見る"):]
+        self.assertIn("records", 配信)
+        self.assertIn("sys.exit(1)", 配信)
+
+    def test_site_urlが空のあいだは配信を見に行かない(self):
+        """**鳴らない見張りにしない**（正本 3.3）。
+
+        ⑤ Pages がまだなら配信は無い。毎朝赤にすると、
+        鳴らなくなるのではなく**見られなくなる**。
+        site_url が入った日から、ひとりでに効き始める形にする。
+        """
+        配信 = self.body[self.body.index("配られている実物を見る"):]
+        空のとき = 配信[:配信.index("sleep")]
+        self.assertIn("exit 0", 空のとき,
+                      "site_url が空の日は、赤にせずに素通りすること")
+
+    def test_配信を見るのは公開用にしまったあと(self):
+        """順番。**押す前の木を見ても、配られているものは分からない。**"""
+        self.assertLess(self.body.index("公開用にしまう（許可リスト）"),
+                        self.body.index("配られている実物を見る"))
+
 
 if __name__ == "__main__":
     unittest.main()

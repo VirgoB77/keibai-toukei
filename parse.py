@@ -409,6 +409,7 @@ class Cards(HTMLParser):
         self._skip = 0
         self._tag = ""
         self._in_label = False  # いま見出しの入れ物の中にいるか
+        self._sr_only = False   # いま画面読み上げ用の文字の中にいるか
         self._badge = ""        # 見出しの**手前**に出る種別のバッジ
 
     def handle_starttag(self, tag, attrs):
@@ -420,18 +421,40 @@ class Cards(HTMLParser):
             if k == "class":
                 cls = v or ""
         self._in_label = any(c in cls for c in LABEL_CLASSES)
+        # **画面読み上げ用の文字は、欄の値ではない**（2026-09-19）。
+        # BITのページ送りは `<span class="sr-only">first</span>` で、
+        # 目には見えないが文字としては出てくる。
+        # **待っている見出しがあると、その値として入る。**
+        #
+        # 実物で 106行のうち6行の「中止情報」が `first` になっていた。
+        # `first` は中止情報の語ではないので段階は動かないが、
+        # **その6行の本当の中止情報は読めていない。**
+        # 取下げは中止情報の欄にしか出ないので、**取下げを見落とす形**。
+        #
+        # 語の一覧で弾かない（`first` `last` … を並べても、次の語で漏れる）。
+        # **見えない文字だ、という形のほうで弾く。**
+        self._sr_only = "sr-only" in cls
 
     def handle_endtag(self, tag):
         if tag in ("script", "style"):
             self._skip = max(0, self._skip - 1)
         self._tag = ""
         self._in_label = False
+        self._sr_only = False
 
     def handle_data(self, data):
         if self._skip:
             return
         text = re.sub(r"[\s　]+", " ", data).strip()
         if not text:
+            return
+        if self._sr_only:
+            # **待っている見出しは、値が空だったということ。**
+            # 黙って捨てるのではなく、空だと決めて閉じる。
+            # 閉じないと、次に来た文字がその欄の値になる
+            if self._card is not None and self._label is not None:
+                self._card["pairs"].append((self._label, ""))
+                self._label = None
             return
         self.texts.append(text)
 
