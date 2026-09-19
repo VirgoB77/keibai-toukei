@@ -390,10 +390,15 @@ class 道具2つが同じ木を見ている(unittest.TestCase):
                 dirs[:] = [d for d in dirs if d not in tree.DIR_SKIP]
                 for name in files:
                     出す.add("%s/%s" % (rel_dir, name))
-        # `.github/` は木に入れないが、公開用に移す日が来る。
-        # そこは check_copy が見てよい（正本 3.3 は本文に掛かる）
+        # **workflow の中身は、木に入れないが check_copy が見てよい。**
+        # `.github/` と、そこに入る前の控え（`scripts/public-workflow.yml`）。
+        # どちらも公開用のリポジトリで動くものなので、3.3 が掛かる。
+        # **直せないものではない**ので、鳴っても言い換えられる
+        def は_workflowの中身(rel):
+            return rel.startswith(".github/") or rel.endswith("-workflow.yml")
+
         はみ出し = sorted(r for r in 見る - 出す
-                       if not r.startswith(".github/"))
+                       if not は_workflowの中身(r))
         self.assertEqual(
             はみ出し, [],
             "check_copy が、公開用の木に行かないものを見張っている。"

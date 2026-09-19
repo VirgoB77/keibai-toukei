@@ -1,0 +1,282 @@
+# 公開用のリポジトリ（VirgoB77/keibai-toukei）に置く workflow。
+#
+# **このファイルは、ここでは走らない。** 金庫に `.github/workflows/` を
+# 増やさないため、ふつうのファイルとして置いてある。
+# ④の鍵が入った日に、公開用の `.github/workflows/keibai.yml` として入れる。
+#
+#     公開用に入れる日は、`tests/test_workflow.py` も同じコミットで入れる
+#     （`make_public_tree.py` の WAIT_FOR_WORKFLOW。片方だけだと check() が止める）
+#
+# ## 向き（正本 9節・DESIGN「公開側」）
+#
+#     走るのは**公開用の Actions**。public なので Actions は無料で、
+#     GITHUB_TOKEN で自分に push できる。**収集用は置き場。**
+#
+#     公開 →（deploy key で checkout）→ 金庫を _raw/ に出す
+#     取ってきた生データは **金庫へ** push（取り直せないものが先）
+#     集計と index.json は **公開用へ** push（許可リストで）
+#
+# ## しまう順番は 収集用 → 公開用
+#
+# 取り直せないもの（その朝に相手のサーバーから取ったページ）を先にしまう。
+# 派生ファイル（集計）は毎回作り直せる。
+name: 競売統計（偵察・保存・公開）
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "どこを見るか（id / keibai・kobai・kokuyu・koyu / osaka・hyogo。空なら全部）"
+        required: false
+        default: ""
+  schedule:
+    # 毎日 日本時間 朝7時30分（UTCの22時30分）。
+    # shutten（大店立地法ウォッチ）が7時に走るので、30分ずらしてある。
+    - cron: "30 22 * * *"
+
+concurrency:
+  group: keibai
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+# **時計は日本時間で見る。** サーバーは UTC で動いている
+env:
+  TZ: Asia/Tokyo
+  RAW_DIR: _raw
+
+jobs:
+  recon:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          # **浅いクローンにしない。** 作者欄の見張りが黙る（正本 7節）
+          fetch-depth: 0
+
+      # **走った日を1回だけ決める。** 時計を見るのはここだけ。
+      # 時刻ではなく**値**を1回に決めて、最後まで同じ値を使う（正本 3.5）
+      - name: 走った日を決める
+        run: |
+          RUN_DATE=$(date +%F)
+          echo "RUN_DATE=${RUN_DATE}" >> "$GITHUB_ENV"
+          echo "この実行は ${RUN_DATE}（日本時間）として記録する"
+
+      # **名前による自己停止。** 名前が `-raw` で終わるなら、そこは金庫。
+      # 金庫に workflow を持たせない（正本 9節）。
+      # **移したあとも、この1行は入れたままにする。**
+      # あとで誰かが merge や copy で金庫に戻す経路が残るため。
+      #
+      # 金庫側の `.github/ikou-mae` はここには無い（公開用には行かない）。
+      # だから**名前だけで止まる**。それが正しい。
+      - name: 金庫では走らないことの確認
+        run: |
+          case "${{ github.repository }}" in
+            *-raw|*-raw-*)
+              echo "::error::金庫（名前が -raw）でこの workflow が走っている。"
+              echo "これは公開用の workflow。収集用は置き場で、Actions を持たない。"
+              echo "今日は何も取りに行かない。"
+              exit 1
+              ;;
+          esac
+          echo "置き場の名前を確認した: ${{ github.repository }}"
+
+      # **鍵が無い日は、何もせずに止まる。**
+      # 鍵が無いまま進むと、金庫がつながらないまま集計が走り、
+      # **その日の出力が空のまま公開側に載る**（正本 9節）。
+      - name: 鍵があることの確認
+        env:
+          KEY: ${{ secrets.RAW_DEPLOY_KEY }}
+        run: |
+          if [ -z "${KEY}" ]; then
+            echo "::error::Secret RAW_DEPLOY_KEY が入っていない。"
+            echo "金庫をつなげないので、今日は何もしない。"
+            echo "公開鍵は金庫の Settings → Deploy keys（Allow write access）、"
+            echo "秘密鍵はこちらの Secret RAW_DEPLOY_KEY。"
+            exit 1
+          fi
+          echo "鍵はある"
+
+      # **金庫が公開側から見えないことを、つなぐ前に確かめる。**
+      # 見えていたら、生データを送らずに止まる（正本 9節）。
+      # 認証なしで GET して、200 が返ったら public。
+      - name: 金庫が非公開であることの確認
+        run: |
+          RAW="${{ github.repository }}-raw"
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' \
+                 "https://api.github.com/repos/${RAW}" || echo "000")
+          if [ "${CODE}" = "200" ]; then
+            echo "::error::金庫 ${RAW} が公開側から見えている（public）。"
+            echo "ここには入札中の物件の所在地が生のまま入る。"
+            echo "private に戻すまで、生データを送らない。"
+            exit 1
+          fi
+          if [ "${CODE}" != "404" ]; then
+            echo "::error::金庫の見え方が確かめられなかった（HTTP ${CODE}）。"
+            echo "**分からないときは進まない。**"
+            exit 1
+          fi
+          echo "金庫は公開側から見えない（404）"
+
+      # 金庫を _raw/ に出す。**書き込み可の deploy key** を使う。
+      - name: 金庫を隣に出す
+        env:
+          KEY: ${{ secrets.RAW_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          # **`\r` を落とす。** 秘密鍵を Windows から貼ると改行が CRLF になる。
+          # そのまま書くと `Load key: invalid format` で落ちる。
+          # **これで落ちたときに、鍵を作り直しに行かない**（鍵のせいではない）
+          printf '%s\n' "${KEY}" | tr -d '\r' > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # 形だけ先に見る。落ちるならここで、取りに行く前に落ちる
+          if ! ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null 2>&1; then
+            echo "::error::秘密鍵の形が読めない。"
+            echo "**鍵そのものではなく、改行（CRLF）のことが多い。**"
+            echo "Secret を貼り直すときは、末尾の改行も含めて貼ること。"
+            exit 1
+          fi
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          git clone --depth 1 \
+            "git@github.com:${{ github.repository }}-raw.git" "${RAW_DIR}"
+          echo "金庫を ${RAW_DIR} に出した"
+
+      # **Python は置き場の違いを知らない。** 今までのパスにつなぐ。
+      # `inbox/` と `tests/fixtures/` も金庫に残してあるので、同じようにつなぐ
+      - name: 今までのパスにつなぐ
+        run: |
+          mkdir -p data
+          for d in raw rows schedule terms agg cross public; do
+            rm -rf "data/$d"
+            mkdir -p "${RAW_DIR}/data/$d"
+            ln -s "../${RAW_DIR}/data/$d" "data/$d"
+          done
+          # **data の直下のファイルも金庫につなぐ**（2026-09-19）。
+          # ディレクトリだけつないでいたので、`inbox-ledger.json` が
+          # 公開用の側に書かれて、毎回消えていた。
+          # 消えると「取り込んだ」の記録が飛び、**同じものを毎朝催促する**。
+          # `data/*.md`（走らせた記録）も金庫に置く。公開用には出さない
+          for f in inbox-ledger.json inbox-todo.md index-dropped.md \
+                   jissuu-ritsu.md parse-unknown.md party-audit.md \
+                   recon-report.md yoyuu.md; do
+            rm -f "data/$f"
+            touch "${RAW_DIR}/data/$f"
+            ln -s "../${RAW_DIR}/data/$f" "data/$f"
+          done
+          for d in inbox tests/fixtures; do
+            rm -rf "$d"
+            mkdir -p "${RAW_DIR}/$d"
+            ln -s "$(python3 -c "import os,sys;print(os.path.relpath(os.path.join('${RAW_DIR}','$d'), os.path.dirname('$d') or '.'))")" "$d"
+          done
+          ls -l data | head -20
+
+      # 取りに行く前に確かめる。**ここが落ちたら、その日は何も取りに行かない。**
+      # `check.sh` が __pycache__ を消して、終了コードで見る
+      - name: やってはいけないことの確認
+        run: sh scripts/check.sh
+
+      - name: 偵察する
+        run: python3 recon.py ${{ github.event.inputs.only }}
+
+      - name: 中身を取り出す
+        run: python3 parse.py
+
+      - name: 利用規約の条文を控える
+        run: python3 terms.py
+
+      - name: 開発許可の規模要件を控える
+        run: python3 kibo.py
+
+      # **取り直せないものを先にしまう**（正本 9節）。
+      # 集計より前に、その朝に取ったページを金庫へ送る。
+      # 途中で落ちても生データは残る
+      - name: 金庫にしまう（取り直せないものが先）
+        if: always()
+        working-directory: _raw
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data inbox 2>/dev/null || git add data
+          if git diff --cached --quiet; then
+            echo "金庫に変わりなし"
+            git reset --quiet
+            exit 0
+          fi
+          git commit -m "役所の土地の売り出しを ${RUN_DATE} の時点でためた"
+          for i in 1 2 3 4 5; do
+            if git push; then echo "金庫に送れた"; exit 0; fi
+            echo "押し戻されたので取り込み直す（${i}回目）"
+            git pull --rebase -X theirs origin HEAD || {
+              echo "::error::金庫への取り込みに失敗した。手で見る"
+              git rebase --abort 2>/dev/null || true
+              exit 1
+            }
+            sleep $((i * 3))
+          done
+          echo "::error::5回試したが金庫に送れなかった"
+          exit 1
+
+      - name: 数字にまとめる
+        run: python3 aggregate.py
+
+      - name: 開札の回を数える
+        run: python3 kaisatsu.py
+
+      - name: どこまで見たかを控える
+        run: python3 shuroku.py
+
+      - name: 姉妹サイト用の index.json を作る
+        run: python3 make_index.py
+
+      - name: 跡地の横断ファイル（いまは止めてある）
+        run: python3 make_cross.py
+
+      # **ページを作ったあとに、もう一度検査を通してから公開用に push する**
+      # （正本 9節）。1回目は昨日の出力に対してなので、それだけだと
+      # 今日の伏せ忘れが翌朝まで公開される
+      - name: もう一度確かめる
+        run: sh scripts/check.sh
+
+      # **許可リストで commit する**（正本 9節）。
+      # `git add -A` のような丸ごとはしない。足し忘れは「載らない」で済むが、
+      # 逆は済まない。**除外リストにしない。**
+      #
+      # **`CNAME` を足さない。** Pages に独自ドメインを付けると GitHub が
+      # 公開側に commit する。こちらが `git add -A` すると削除の差分になり、
+      # ドメインが外れる。**仕掛けではなく「入れないこと」が守り。**
+      #
+      # **コミットのメッセージに升の実数・引き算の式・場所の名前を書かない**
+      # （正本 3.2。PR の題名と本文は履歴の外に残る）
+      - name: 公開用にしまう（許可リスト）
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # **symlink をそのまま add しない。** 実体を写してから add する
+          rm -rf data/public
+          mkdir -p data/public
+          cp "${RAW_DIR}"/data/public/*.json data/public/ 2>/dev/null || true
+          git add data/public/index.json
+          test -f robots.txt && git add robots.txt || true
+          test -f sitemap.xml && git add sitemap.xml || true
+          test -f index.html && git add index.html || true
+          if git diff --cached --quiet \
+               -I'"generated_at"' -I'"時点"'; then
+            echo "変わりなし。今日は何も起きていない（日付だけの差分は数えない）"
+            git reset --quiet
+            exit 0
+          fi
+          git commit -m "${RUN_DATE} の時点の数字にした"
+          for i in 1 2 3 4 5; do
+            if git push; then echo "公開用に送れた"; exit 0; fi
+            echo "押し戻されたので取り込み直す（${i}回目）"
+            git pull --rebase origin main || {
+              echo "::error::公開用への取り込みに失敗した。手で見る"
+              git rebase --abort 2>/dev/null || true
+              exit 1
+            }
+            sleep $((i * 3))
+          done
+          echo "::error::5回試したが公開用に送れなかった"
+          exit 1
