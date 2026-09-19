@@ -241,6 +241,13 @@ class 検査の入口は1つ(unittest.TestCase):
     SH = os.path.join(ROOT, "scripts", "check.sh")
 
     def test_workflowはcheck_shを通る(self):
+        if not workflows():
+            # **空回りで通さない**（2026-09-19）。金庫から workflow を
+            # 消した日から、このループは一度も回らなくなった。
+            # 回らないのに「通った」と出るのは、鳴らない見張り
+            self.skipTest("このリポジトリに workflow が無い。"
+                          "控え（scripts/public-workflow.yml）のほうは"
+                          "別のクラスが見ている")
         for path in workflows():
             text = read(path)
             body = "\n".join(l for l in text.splitlines()
