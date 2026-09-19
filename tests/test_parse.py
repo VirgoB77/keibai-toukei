@@ -770,5 +770,139 @@ class 画面読み上げ用の文字を値にしない(unittest.TestCase):
         self.assertFalse([u for u in self.unknown if "first" in u or "last" in u])
 
 
+class 決めたあとで答えを変えない(unittest.TestCase):
+    """**基準が、あとから来たデータで動く**（2026-09-19）。
+
+    `mark_re_notice()` は「その物件で、こちらが知っているいちばん早い回」を
+    基準に新規／再公告を決める。基準は**いま持っているデータ**で決まる。
+
+        いま      11月の回だけ見えている        → 新規
+        あとから  8月の回（過去データ）が入る  → 11月の回が**再公告に裏返る**
+
+    裏返っても**親（公告）の合計は変わらない**ので、`kazu_ga_au()` は通る。
+    **公開した升が黙って入れ替わる形**だった。
+
+    過去データ（3年分）を入れる日に、まとまって起きる。
+    """
+
+    def 行(self, pk, open_date, first_seen="2026-09-17"):
+        return {"property_key": pk, "key": "%s:%s" % (pk, open_date),
+                "open_date": open_date, "first_seen": first_seen}
+
+    def test_あとから早い回が来ても裏返らない(self):
+        m = {}
+        一 = self.行("A", "2026-11-05")
+        m[一["key"]] = 一
+        parse.mark_re_notice(m)
+        self.assertFalse(m["A:2026-11-05"]["re_notice"])
+
+        m["A:2026-08-01"] = self.行("A", "2026-08-01", "2026-10-05")
+        _, 裏返り = parse.mark_re_notice(m)
+        self.assertFalse(m["A:2026-11-05"]["re_notice"],
+                         "決めた値が動いた。公開した升が黙って入れ替わる")
+        self.assertEqual(len(裏返り), 1, "動かさなかったことを控えていない")
+        self.assertEqual(裏返り[0][0], "A:2026-11-05")
+        self.assertEqual(裏返り[0][1:], (False, True))
+
+    def test_まだ決まっていない行は決める(self):
+        """**止めるのは「決め直し」だけ。** 新しい行は決められること。"""
+        m = {}
+        m["B:2026-08-01"] = self.行("B", "2026-08-01")
+        m["B:2026-11-05"] = self.行("B", "2026-11-05")
+        parse.mark_re_notice(m)
+        self.assertFalse(m["B:2026-08-01"]["re_notice"])
+        self.assertTrue(m["B:2026-11-05"]["re_notice"])
+
+    def test_重ねるときに持ち越す(self):
+        """`first_seen` と同じ扱い。持ち越さないと毎回いちから決め直す。"""
+        merged = {}
+        parse.merge_snapshot(merged, [self.行("C", "2026-11-05")], "2026-09-17")
+        parse.mark_re_notice(merged)
+        self.assertIn("re_notice", merged["C:2026-11-05"])
+        # 次の日、同じ物件がまた一覧に出る（読み取りは re_notice を持たない）
+        新 = self.行("C", "2026-11-05")
+        self.assertNotIn("re_notice", 新)
+        parse.merge_snapshot(merged, [新], "2026-09-18")
+        self.assertIn("re_notice", merged["C:2026-11-05"],
+                      "重ねたときに決めた値が落ちている")
+
+    def test_親の合計は変わらないので足し算では気づけない(self):
+        """**なぜ別の見張りが要るか**を、ここで1回見せておく。"""
+        import aggregate
+        from collections import Counter
+
+        def 升(m):
+            c = Counter()
+            for r in m.values():
+                rr = dict(r)
+                rr.setdefault("status", "")
+                rr.setdefault("system", "keibai")
+                for ev in aggregate.events(rr):
+                    c[ev] += 1
+            return c
+
+        前 = {}
+        前["D:2026-11-05"] = self.行("D", "2026-11-05")
+        parse.mark_re_notice(前)
+        後 = {"D:2026-11-05": self.行("D", "2026-11-05"),
+              "D:2026-08-01": self.行("D", "2026-08-01", "2026-10-05")}
+        parse.mark_re_notice(後)
+        # 親（公告）の 2026-09 は、どちらも 1 のまま
+        self.assertEqual(升(前)[("公告", "2026-09")], 1)
+        self.assertEqual(升(後)[("公告", "2026-09")], 1)
+        # なのに子は入れ替わっている
+        self.assertEqual(升(前)[("公告-新規", "2026-09")], 1)
+        self.assertEqual(升(後)[("公告-再公告", "2026-09")], 1)
+
+
+class あとから答えが変わった行の控え(unittest.TestCase):
+    """**黙って捨てるのでも、黙って直すのでもない**（正本 9節）。"""
+
+    def setUp(self):
+        import tempfile
+        self.keep = parse.URAGAERI
+        parse.URAGAERI = os.path.join(tempfile.mkdtemp(), "uragaeri.md")
+
+    def tearDown(self):
+        parse.URAGAERI = self.keep
+
+    def 書かせる(self, 裏返り):
+        import io as _io
+        import sys as _sys
+        out = _io.StringIO()
+        k = _sys.stdout
+        _sys.stdout = out
+        try:
+            parse.write_uragaeri(裏返り)
+        finally:
+            _sys.stdout = k
+        文 = ""
+        if os.path.exists(parse.URAGAERI):
+            with open(parse.URAGAERI, encoding="utf-8") as f:
+                文 = f.read()
+        return 文, out.getvalue()
+
+    def test_あったら控えて鳴る(self):
+        文, 画面 = self.書かせる([("33111", "A:2026-11-05", False, True)])
+        self.assertIn("33111", 文)
+        self.assertIn("A:2026-11-05", 文)
+        self.assertIn("新規", 文)
+        self.assertIn("再公告", 文)
+        self.assertIn("::error::", 画面, "黙って控えるだけでは気づけない")
+
+    def test_公開しないと書いてある(self):
+        """走らせた記録。伏せる前の値が入りうる（正本 9節）。"""
+        文, _ = self.書かせる([("33111", "A:2026-11-05", False, True)])
+        self.assertIn("公開しない", 文)
+
+    def test_無ければ紙を残さない(self):
+        """**前の日の紙が残ると、直ったのに鳴りつづける。**"""
+        self.書かせる([("33111", "A:2026-11-05", False, True)])
+        self.assertTrue(os.path.exists(parse.URAGAERI))
+        文, 画面 = self.書かせる([])
+        self.assertFalse(os.path.exists(parse.URAGAERI))
+        self.assertNotIn("::error::", 画面)
+
+
 if __name__ == "__main__":
     unittest.main()

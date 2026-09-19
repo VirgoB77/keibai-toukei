@@ -705,6 +705,7 @@ BIT_SCHEDULE_URL = "https://www.bit.courts.go.jp/app/schedule/pr005/h01?courtId=
 BIT_LIST_URL = "https://www.bit.courts.go.jp/app/court/ps004/h04"
 LEDGER = os.path.join(HERE, "data", "inbox-ledger.json")
 PARTY_AUDIT = os.path.join(HERE, "data", "party-audit.md")
+URAGAERI = os.path.join(HERE, "data", "uragaeri.md")
 
 # **1庁だけ頼む。** 列の名前を決めるのに要るのは1枚だから。
 # 6庁ぶんを並べると「6枚やるのか」と見えて、人は手が止まる。
@@ -1070,10 +1071,61 @@ def mark_re_notice(merged):
         d = r.get("open_date") or ""
         if pk not in first or d < first[pk]:
             first[pk] = d
+    裏返り = []
     for r in merged.values():
         pk = r.get("property_key")
-        r["re_notice"] = bool(pk and (r.get("open_date") or "") != first.get(pk))
-    return merged
+        いま = bool(pk and (r.get("open_date") or "") != first.get(pk))
+        前 = r.get("re_notice")
+        if 前 is None:
+            r["re_notice"] = いま
+        elif bool(前) != いま:
+            # **決めた値は動かさない。** 動かすと、公開した升が黙って入れ替わる
+            裏返り.append((r.get("key"), bool(前), いま))
+    return merged, 裏返り
+
+
+def write_uragaeri(裏返り):
+    """**決めたあとに答えが変わった行**を控える（2026-09-19）。
+
+    `mark_re_notice()` は「その物件で、こちらが知っているいちばん早い回」を
+    基準に新規／再公告を決める。**基準が、あとから来たデータで動く。**
+
+        いま      11月の回だけ見えている        → 新規
+        あとから  8月の回（過去データ）が入る  → 11月の回が**再公告に裏返る**
+
+    裏返っても親（公告）の合計は変わらないので、`kazu_ga_au()` は通る。
+    **公開した升が黙って入れ替わる形**だった。
+
+    だから決めた値は動かさない。**動かさなかったことを、ここに控える。**
+    黙って捨てるのでも、黙って直すのでもない（正本 9節）。
+
+    過去データ（3年分）を入れる日に、まとまって出るはず。
+    そのとき「いままでの新規は、こちらが見る前の回を知らなかっただけ」
+    という判断が要る。**機械が勝手に決めてよいことではない。**
+    """
+    if not 裏返り:
+        if os.path.exists(URAGAERI):
+            os.remove(URAGAERI)
+        return
+    lines = [report.not_public("あとから答えが変わった行（%d 件）" % len(裏返り))]
+    lines.append("")
+    lines.append("`re_notice`（新規か再公告か）を決めたあとで、"
+                 "より早い回のデータが入った。")
+    lines.append("**決めた値は動かしていない。** 公開した升が黙って"
+                 "入れ替わらないようにするため。")
+    lines.append("")
+    lines.append("| 裁判所 | 鍵 | いまの値 | あとから来た答え |")
+    lines.append("| --- | --- | --- | --- |")
+    for cid, key, 前, いま in sorted(裏返り):
+        lines.append("| %s | `%s` | %s | %s |"
+                     % (cid, key,
+                        "再公告" if 前 else "新規",
+                        "再公告" if いま else "新規"))
+    with open(URAGAERI, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    print("::error::**あとから答えが変わった行が %d 件**（data/uragaeri.md）。"
+          % len(裏返り))
+    print("決めた値は動かしていない。どちらを採るかは人が決める")
 
 
 def merge_snapshot(merged, rows, day):
@@ -1096,6 +1148,11 @@ def merge_snapshot(merged, rows, day):
         else:
             r["first_seen"] = day
             r["seen"] = [day]
+        # **一度決めた「新規か再公告か」を持ち越す**（2026-09-19）。
+        # `first_seen` と同じ扱い。持ち越さないと `mark_re_notice()` が
+        # 毎回いちから決め直し、**あとから早い回が入った日に過去が裏返る**
+        if old and "re_notice" in old:
+            r["re_notice"] = old["re_notice"]
         r["last_seen"] = day
         merged[r["key"]] = r
 
@@ -1215,10 +1272,12 @@ def main():
         for cid, rows in groups.items():
             merge_snapshot(merged.setdefault(cid, {}), rows, day)
 
+    uragaeri = []
     for court_id in sorted(merged):
         if not merged[court_id]:
             continue
-        mark_re_notice(merged[court_id])
+        _, 裏返り = mark_re_notice(merged[court_id])
+        uragaeri += [(court_id,) + x for x in 裏返り]
         rows = sorted(merged[court_id].values(), key=lambda r: r["key"])
         name = names.get(court_id, court_id)
         with open(os.path.join(ROWS_DIR, "%s.json" % court_id), "w",
@@ -1230,6 +1289,7 @@ def main():
         rows_total += len(rows)
     if rows_total:
         print("物件 %d 件を data/rows/keibai/ に置いた" % rows_total)
+    write_uragaeri(uragaeri)
     all_rows = []
     for court_id, _ in court_list:
         try:

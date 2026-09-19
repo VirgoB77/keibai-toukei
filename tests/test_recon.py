@@ -135,6 +135,39 @@ class sources_jsonの決まり(unittest.TestCase):
             if not s.get("url"):
                 self.assertFalse(s.get("enabled"), s["id"])
 
+    def test_読めないものの列を先に当てる出どころがある(self):
+        """**実物を取る前に、何が載るかを知っておく**（2026-09-19）。
+
+        BIT の売却結果・過去データ・取下げ等は、画面遷移が POST なので
+        GET の URL が無い。**人が保存するしかない。**
+        頼む前に列を知っておかないと、
+        「保存してもらったが、欲しい欄が無かった」になる。
+
+        `bit-help` のメモにそう書いてあったのに、**索引しか入れていなかった。**
+        索引はリンクの一覧で、列名は1つも書いていない。
+        """
+        url = {s["id"]: s.get("url") or "" for s in self.sources}
+        for sid in ("bit-help-result", "bit-help-past", "bit-help-withdrawn"):
+            self.assertIn(sid, url, sid)
+            self.assertTrue(url[sid].startswith("https://www.bit.courts.go.jp/help/"),
+                            "%s の URL が使い方のページではない" % sid)
+        # **索引と同じURLにしない。** 索引には列名が1つも無い
+        self.assertNotEqual(url["bit-help-result"], url["bit-help"])
+
+    def test_人が保存するものは止めてある(self):
+        """**読み取りが無いものを人に頼まない**（parse.INBOX_READABLE）。
+
+        頼むと、人が手を動かしたぶんがそのまま捨てられる。しかも置かれた
+        時点で催促が止まるので、**その升は永久に空のまま**になる。
+        """
+        import parse
+        for s in self.sources:
+            if s.get("manual"):
+                self.assertFalse(
+                    s.get("enabled"), "%s が manual なのに動いている" % s["id"])
+        self.assertEqual(parse.INBOX_READABLE, ("list",),
+                         "読み取りを書いたら、ここと一緒に増やすこと")
+
     def test_KSIと財務省の売却サイトは入れていない(self):
         for s in self.sources:
             url = s.get("url") or ""

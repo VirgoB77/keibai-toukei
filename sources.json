@@ -51,6 +51,42 @@
       "name_column": "未確認"
     },
     {
+      "id": "bit-help-result",
+      "name": "BIT 使い方（売却結果の照会）",
+      "system": "keibai",
+      "kind": "index",
+      "area": "all",
+      "url": "https://www.bit.courts.go.jp/help/help04/index.html",
+      "note": "**売却結果にどの列が載るかは、ここに書いてある。** `bit-help` は索引だけで、本文はこちら（2026-09-19 に足した）。入札本数が出るか、**不落・不売が載るか**を当てる。実物は POST の画面なので人が保存する。**その前に列を知っておく。**",
+      "enabled": true,
+      "pdf": false,
+      "name_column": "未確認"
+    },
+    {
+      "id": "bit-help-past",
+      "name": "BIT 使い方（過去データの照会）",
+      "system": "keibai",
+      "kind": "index",
+      "area": "all",
+      "url": "https://www.bit.courts.go.jp/help/help05/index.html",
+      "note": "過去データ（売却済み・3年分）に何が載るか。**結果は遡れるかどうかがここで決まる。**",
+      "enabled": true,
+      "pdf": false,
+      "name_column": "未確認"
+    },
+    {
+      "id": "bit-help-withdrawn",
+      "name": "BIT 使い方（取下げ等の検索）",
+      "system": "keibai",
+      "kind": "index",
+      "area": "all",
+      "url": "https://www.bit.courts.go.jp/help/help03/index.html",
+      "note": "取下げ等の検索に何が載るか。取下げは一覧の中止情報にしか出ないので、裏取りの形を当てる。",
+      "enabled": true,
+      "pdf": false,
+      "name_column": "未確認"
+    },
+    {
       "id": "bit-schedule-33311",
       "name": "BIT 売却スケジュール 神戸地方裁判所 本庁",
       "system": "keibai",
