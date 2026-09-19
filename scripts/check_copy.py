@@ -42,10 +42,26 @@ NG = (
 TARGET_SUFFIX = {".html", ".css", ".xml", ".md", ".py", ".yml"}
 
 # 自分自身は見ない。NG語を文字列として持っているので必ず当たる
-SELF = {"check_copy.py"}
+# 自分自身と、**金庫にだけ置くと自分で名乗っているもの**は見ない。
+# `make_public_tree.py` は冒頭で「公開用の木には入れない」と書いてある。
+# 公開されない本文に 3.3 は掛からない（掛けると直せないものが鳴りだす）
+SELF = {"check_copy.py", "make_public_tree.py"}
 
 # 金庫にしか無いもの。公開する木には入らない（DESIGN「公開側」）
-VAULT_ONLY = ("data", "inbox", "tests/fixtures", ".git", "__pycache__")
+# **見る範囲を、実際に公開する木にそろえる**（2026-09-19）。
+#
+# `docs/` は `make_public_tree.py` の許可リストに入っていないので、
+# **公開用の木には1つも行かない。** それをここで見ていた。
+#
+# 実際に食い違った。`docs/letters/` は大阪府と国立国会図書館へ送った
+# 手紙の**写し**で、送った文そのもの。**直せない。**
+# 直せないものを見張ると、毎回鳴って誰も見なくなる
+# （正本 9節「誤報を出す見張りは、そのうち誰も見なくなる」）。
+#
+# 2つの道具が「公開する木」を別々に決めていたのが元。
+# `tests/test_public.py` がそろっていることを見張る。
+VAULT_ONLY = ("data", "inbox", "docs", "tests/fixtures",
+              ".git", "__pycache__")
 
 
 def _under(rel, paths):

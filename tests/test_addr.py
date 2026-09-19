@@ -15,7 +15,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from common.addr import city_code, kanji_to_int, normalize  # noqa: E402
+from common.addr import city_code, kanji_to_int, normalize, to_city  # noqa: E402
 
 
 class 市区町村コード(unittest.TestCase):
@@ -157,6 +157,48 @@ class 住所をそろえる(unittest.TestCase):
         self.assertEqual(r["addr_key"], "")
         self.assertEqual(r["addr_key_town"], "")
         self.assertEqual(r["city_code"], "27127")
+
+
+class 収集先の市を住所に被せない(unittest.TestCase):
+    """正本 4節（2026-09-19）。
+
+    姉妹サイト（開発系）が実物で踏んだ。大阪市の一覧に他県の土地が入っていて、
+    456件中454件が切れ、残り2件を呼ぶ側の市で埋めていた。
+    **2件を埋めるために454件を汚さない。**
+
+    **被せると、形は正しいので検査を通るのに、この世に無い住所ができる。**
+    """
+
+    def test_住所が別の市を名乗るなら空にする(self):
+        a = normalize("大阪府", "大阪市北区", "兵庫県西宮市甲子園町1-1")
+        self.assertEqual((a["pref"], a["city"], a["city_code"]), ("", "", ""))
+        self.assertNotIn("大阪市北区", a["addr"],
+                         "この世に無い住所ができている: %r" % a["addr"])
+        self.assertEqual(a["addr_key"], "", "食い違ったまま鍵を作っている")
+
+    def test_合っていれば今までどおり(self):
+        a = normalize("兵庫県", "西宮市", "兵庫県西宮市甲子園町1-1")
+        self.assertEqual((a["city"], a["city_code"]), ("西宮市", "28204"))
+        self.assertEqual(a["addr"], "西宮市甲子園町1-1")
+
+    def test_住所から市が読めなければ呼ぶ側を使う(self):
+        """**これは被せではない。**
+
+        公売の表のように「見出しに市、欄に番地」という正しい分かれ方がある。
+        そこまで拒むと、読めるものまで捨てる。
+        """
+        a = normalize("兵庫県", "西宮市", "甲子園町1-1")
+        self.assertEqual((a["city"], a["city_code"]), ("西宮市", "28204"))
+
+    def test_to_cityは読めなければ空を返す(self):
+        """**推測で埋めない**（正本 4節③）。"""
+        for t in ("所在地不明", "", "〇〇県××町1-1", "番地不詳"):
+            self.assertEqual(to_city(t), ("", ""), repr(t))
+
+    def test_to_cityは長いほうを採る(self):
+        """政令市は区まで。「大阪市」で止めない。"""
+        self.assertEqual(to_city("大阪市北区梅田1-1-1"),
+                         ("大阪府", "大阪市北区"))
 
 
 if __name__ == "__main__":

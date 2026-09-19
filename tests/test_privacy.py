@@ -393,6 +393,47 @@ class 正本5節の署名(unittest.TestCase):
             self.assertEqual(count, privacy.masked(n))
             self.assertEqual(label, str(privacy.bucket_count(n)))
 
+    def test_署名そのものをそろえている(self):
+        """**形も正本に合わせる**（2026-09-19、正本 PR #71）。
+
+        中身が同じでも、引数の数が違えば「置いてそろえた」ことにならない。
+        次に使い始めた人が、渡すつもりの引数を渡せない。
+        """
+        import inspect
+        期待 = {
+            "redact_name": "(name, names=())",
+            "is_corp": "(name)",
+            "party_for_index": "(name)",
+            "redact_addr": "(addr, kind, town='')",
+            "suppress_rate": "(count, population)",
+            "masked": "(n)",
+            "bucket_count": "(n)",
+            "is_party_column": "(label)",
+        }
+        for 名, 形 in sorted(期待.items()):
+            got = str(inspect.signature(getattr(privacy, 名)))
+            self.assertEqual(got, 形, "%s の署名が正本とちがう" % 名)
+
+    def test_namesは戻り値を1文字も変えない(self):
+        """**伏せるかどうかを `names` に頼らせない**（正本 5節・PR #71）。
+
+        頼った瞬間、渡し忘れが穴になる。`names` が変えるのは、
+        呼ぶ側が付ける名札（気づくための引数）だけ。
+        """
+        for 名 in ("山田太郎", "", "株式会社あ", "不明"):
+            self.assertEqual(privacy.redact_name(名),
+                             privacy.redact_name(名, ("株式会社い", "田中")),
+                             名)
+
+    def test_suppress_rateは0件を伏せない(self):
+        """伏せるのは率×人口で件数が戻るから。**0件は戻るものが無い。**"""
+        self.assertFalse(privacy.suppress_rate(0, 1000))
+        self.assertTrue(privacy.suppress_rate(1, 1000))
+        self.assertTrue(privacy.suppress_rate(2, 1000))
+        self.assertFalse(privacy.suppress_rate(3, 1000))
+        # 人口の条件は0件でも効く（率そのものが跳ねる）
+        self.assertTrue(privacy.suppress_rate(0, 499))
+
     def test_当事者の列名を4サイトぶん持っている(self):
         """**落とすと地番が出る側**なので、2サイト目を待たずに足す。"""
         for w in ("氏名", "名義", "代表者", "代表取締役", "届出者", "申請者",

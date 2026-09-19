@@ -32,6 +32,7 @@ import kinko  # noqa: E402
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.join(HERE, "scripts"))
 
 from common.report import NOT_PUBLIC_LINE  # noqa: E402
 from common.shukei import NOT_PUBLIC  # noqa: E402
@@ -352,6 +353,102 @@ class 実数はどのファイルにも残さない(unittest.TestCase):
                 if '"_n"' in f.read():
                     bad.append(os.path.relpath(path, HERE))
         self.assertEqual(bad, [], "伏せた升の実数が残っているファイル")
+
+
+class 道具2つが同じ木を見ている(unittest.TestCase):
+    """**「公開する木」を、2か所で別々に決めない**（正本 9節・2026-09-19）。
+
+    `scripts/check_copy.py` は評価の語を見張り、
+    `scripts/make_public_tree.py` は実際に木を作る。
+    片方が `docs/` を見ていて、もう片方は入れていなかった。
+
+    **直せないものを見張っていた。** `docs/letters/` は大阪府と
+    国立国会図書館へ送った手紙の写しで、送った文そのもの。
+    毎回鳴って、誰も見なくなる形だった。
+    """
+
+    def test_check_copyが見る木は公開する木に収まっている(self):
+        import check_copy
+        import make_public_tree as tree
+        見る = {rel for rel, _ in check_copy.walk(check_copy.HERE)}
+        出す = set(tree.FILES)
+        for top in tree.DIRS:
+            for cur, dirs, files in os.walk(os.path.join(HERE, top)):
+                rel_dir = os.path.relpath(cur, HERE).replace(os.sep, "/")
+                if any(rel_dir == s or rel_dir.startswith(s + "/")
+                       for s in tree.DIR_SKIP):
+                    dirs[:] = []
+                    continue
+                dirs[:] = [d for d in dirs if d not in tree.DIR_SKIP]
+                for name in files:
+                    出す.add("%s/%s" % (rel_dir, name))
+        # `.github/` は木に入れないが、公開用に移す日が来る。
+        # そこは check_copy が見てよい（正本 3.3 は本文に掛かる）
+        はみ出し = sorted(r for r in 見る - 出す
+                       if not r.startswith(".github/"))
+        self.assertEqual(
+            はみ出し, [],
+            "check_copy が、公開用の木に行かないものを見張っている。"
+            "**直せないものを見張ると、毎回鳴って誰も見なくなる**:\n"
+            + "\n".join(はみ出し))
+
+
+class 結果の語は落札と不調だけ(unittest.TestCase):
+    """正本 6節（2026-09-19）。**「売却」「不売」「売却済み」とは書かない。**
+
+    相手のページに書いてある語は別（`aggregate.SOLD` / `UNSOLD` は
+    読むための照合語なので、そのまま残す）。
+    ここが見るのは**こちらが書き出したもの**だけ。
+
+    文章の中の語まで機械で見ると、出どころの名前（「BIT 売却スケジュール」）や
+    制度の名前（「公有財産の売却」）まで鳴る。**名前として書いたもの**を見る。
+    """
+
+    NG = ("売却", "不売", "売却済")
+
+    def test_升の段階に相手の語を使わない(self):
+        import aggregate
+        for 語 in set(aggregate.FAMILIES.parents) | set(aggregate.FAMILIES.children):
+            for ng in self.NG:
+                self.assertNotIn(ng, 語, "升の段階が相手の語になっている: %s" % 語)
+
+    def test_書き出したファイルの段階に相手の語が無い(self):
+        """**実物を読む。** 語彙を直しても、古い出力が残っていたら出る。"""
+        kinko.need(self)
+        for path, key in ((os.path.join(AGG, "monthly.json"), "stage"),
+                          (os.path.join(PUBLIC, "index.json"), "kind")):
+            if not os.path.exists(path):
+                continue
+            with io.open(path, encoding="utf-8") as f:
+                d = json.load(f)
+            升 = d.get("cells") or d.get("counts_by_city") or []
+            for c in 升:
+                for ng in self.NG:
+                    self.assertNotIn(ng, c.get(key, ""),
+                                     "%s に相手の語が出ている: %r"
+                                     % (os.path.basename(path), c.get(key)))
+
+    def test_公開する文章で名前として書いていない(self):
+        """バッククォートで囲ったものは**名前**。そこに相手の語を置かない。
+
+        囲っていない地の文は見ない（「BIT 売却スケジュール」のような
+        出どころの名前まで鳴らすと、直せないものが鳴る）。
+        """
+        import re
+        bad = []
+        for name in ("README.md", "about.md", "DESIGN.md"):
+            path = os.path.join(HERE, name)
+            if not os.path.exists(path):
+                continue
+            with io.open(path, encoding="utf-8") as f:
+                for i, line in enumerate(f, 1):
+                    for 名 in re.findall(r"`([^`\n]{1,20})`", line):
+                        if 名 in ("売却", "不売", "売却済", "売却済み",
+                                 "競売/売却", "競売/不売"):
+                            bad.append("%s:%d `%s`" % (name, i, 名))
+        self.assertEqual(bad, [],
+                         "名前として相手の語を書いている（落札／不調に寄せる）:\n"
+                         + "\n".join(bad))
 
 
 if __name__ == "__main__":
