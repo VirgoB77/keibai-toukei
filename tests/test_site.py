@@ -80,17 +80,28 @@ class 名乗りは据え置き(unittest.TestCase):
         self.assertIn(site.contact_url(), site.user_agent())
         self.assertTrue(site.contact_url().startswith("https://"))
 
-    def test_site_urlはまだ空(self):
-        """**⓪が済んでも、まだ配信していない。**
+    def test_site_urlは配信を確かめてから入れた(self):
+        """**2026-09-19 に入れた。実物を引いてから。**
 
         ⓪（Verified domains）は「ほかの人にドメインを取られない」ことを
         保証するだけで、「そこに何かがある」ことは保証しない。
-        2026-09-19 時点で keibai-toukei.com は DNS が引けない。
+        だから⓪とは別に、配信そのものを見てから入れた
+        （正本 3.4「404を入れない。まだ公開していないページのURLは入れない」）。
 
-        正本 3.4「**404 を入れない**。まだ公開していないページのURLは入れない」。
-        **Pages が配信を始めた日に入れる。**
+        確かめた中身:
+
+            取りに行く: https://keibai-toukei.com/data/index.json
+            配られているもの: 市区町村 92 / records 0（からっぽ）
+
+        **本体（apex）にすること。** www は 301 で飛ぶ。
+        飛ばされる側を入れると index.json のURLが全部リダイレクトになり、
+        配信の確認（リダイレクトを追わない）も落ちる。
         """
-        self.assertEqual(site.SITE.get("site_url", ""), "")
+        u = site.SITE.get("site_url", "")
+        self.assertTrue(u.startswith("https://"), u)
+        self.assertFalse(u.startswith("https://www."),
+                         "www は 301 で飛ぶ側。本体を入れること")
+        self.assertTrue(u.endswith("/"), "末尾のスラッシュを落とさない")
 
     def test_ドメイン検証が済んだらua_labelを消す(self):
         """**据え置きは消し忘れる。**
@@ -165,10 +176,18 @@ class 入口のURL(unittest.TestCase):
         self.assertEqual("%s%s/%s.html" % (self.入れてみる(""), "keibai", "x"),
                          "keibai/x.html")
 
-    def test_いま本番のBASE_URLは空(self):
-        """**site_url を入れた日に、ここも一緒に見直す。**"""
+    def test_本番のBASE_URLがそのままつながる(self):
+        """**ここが本番のつなぎ方そのもの。**
+
+        `site_url` を入れた日に、ここも一緒に見直す約束だった（2026-09-19 に入れた）。
+        """
+        import make_cross
         import make_index
-        self.assertEqual(make_index.BASE_URL, "")
+        self.assertEqual(make_index.BASE_URL, site.base_url())
+        self.assertEqual(make_cross.BASE_URL, site.base_url())
+        つないだ = "%s%s/%s.html" % (make_index.BASE_URL, "keibai", "x")
+        self.assertEqual(つないだ, "https://keibai-toukei.com/keibai/x.html")
+        self.assertNotIn(".comkeibai", つないだ)
 
     def test_入れるならhttps(self):
         u = raw().get("site_url", "")
