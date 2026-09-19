@@ -121,7 +121,7 @@ class 実数が出せた升の割合(unittest.TestCase):
     """正本 3.2「判定は『実数が出せた升の割合』で見る」（2026-09-17）。
 
     伏せ字の割合で機械判定すると、本当に0件ばかりの層がすり抜ける。
-    **このサイトの 競売/公告-再公告 がまさにその形**（伏せ字 0% ・
+    **このサイトの 競売/公告-再出 がまさにその形**（伏せ字 0% ・
     本当に0件 100% ・実数 0%）。伏せ字の割合では絶対に引っかからない。
     """
 
@@ -138,16 +138,16 @@ class 実数が出せた升の割合(unittest.TestCase):
         import make_index
         by_city = [
             # 伏せ字は1つも無いのに、実数も1つも出せていない層
-            {"kind": "競売/公告-再公告", "count": 0},
-            {"kind": "競売/公告-再公告", "count": 0},
+            {"kind": "競売/公告-再出", "count": 0},
+            {"kind": "競売/公告-再出", "count": 0},
             # 伏せ字だらけだが実数もいくらか出せている層
-            {"kind": "競売/公告-新規", "count": None},
-            {"kind": "競売/公告-新規", "count": 5},
+            {"kind": "競売/公告-初出", "count": None},
+            {"kind": "競売/公告-初出", "count": 5},
         ]
         per = make_index.shown_ratio(by_city, [0] * 100)
-        self.assertEqual(per["競売/公告-再公告"]["伏せ字"], 0)
-        self.assertEqual(per["競売/公告-再公告"]["実数の割合"], 0.0)
-        self.assertEqual(per["競売/公告-新規"]["実数の割合"], 1.0)
+        self.assertEqual(per["競売/公告-再出"]["伏せ字"], 0)
+        self.assertEqual(per["競売/公告-再出"]["実数の割合"], 0.0)
+        self.assertEqual(per["競売/公告-初出"]["実数の割合"], 1.0)
 
     def test_升なしを0件と数えない(self):
         import make_index

@@ -131,8 +131,8 @@ class 升は3つ組でひとつ(unittest.TestCase):
                 self.行(3, "戸建て", "不売"), self.行(4, "土地", "売却")]
         cb = make_index.build(rows)["counts_by_city"]
         n = {c["kind"]: c["count"] for c in cb}
-        self.assertEqual(n["競売/公告-新規"], 4)
-        self.assertEqual(n["競売/公告-再公告"], 0)
+        self.assertEqual(n["競売/公告-初出"], 4)
+        self.assertEqual(n["競売/公告-再出"], 0)
 
 
 class 引き算で伏せた升を戻せない(unittest.TestCase):
@@ -166,7 +166,7 @@ class 引き算で伏せた升を戻せない(unittest.TestCase):
 
     def test_親は常に出さない(self):
         # 伏せる升が無くても親は出さない。**足し算が二重になるから。**
-        # 公告-新規は公告の内数で、並べると「公告7＋新規7＝14」と読める
+        # 公告-初出は公告の内数で、並べると「公告7＋初出7＝14」と読める
         rows = [self.行(i, "売却") for i in range(4)]
         rows += [self.行(i, "不売") for i in range(4, 7)]
         cb = make_index.build(rows)["counts_by_city"]
@@ -180,7 +180,7 @@ class 引き算で伏せた升を戻せない(unittest.TestCase):
         rows += [self.行(i, "不売") for i in range(4, 7)]
         cb = make_index.build(rows)["counts_by_city"]
         n = {c["kind"]: c["count"] for c in cb}
-        self.assertEqual(n["競売/公告-新規"] + n["競売/公告-再公告"], 7)
+        self.assertEqual(n["競売/公告-初出"] + n["競売/公告-再出"], 7)
         self.assertEqual(n["競売/落札"] + n["競売/不調"], 7)
 
     def test_落札率の材料は残る(self):
@@ -193,16 +193,16 @@ class 引き算で伏せた升を戻せない(unittest.TestCase):
         self.assertEqual(got["競売/不調"], "1-2")
 
     def test_公告も同じように守る(self):
-        # 公告 ＝ 公告-新規 ＋ 公告-再公告。再公告の升を出していなかったころは、
-        # 公告6 − 公告-新規5 ＝ 1 で再公告が1件だと分かってしまった
+        # 公告 ＝ 公告-初出 ＋ 公告-再出。再出の升を出していなかったころは、
+        # 公告6 − 公告-初出5 ＝ 1 で再出が1件だと分かってしまった
         rows = [self.行(i, "売却") for i in range(5)]
-        rows += [dict(self.行(5, "売却"), re_notice=True)]
+        rows += [dict(self.行(5, "売却"), saishutsu=True)]
         cb = make_index.build(rows)["counts_by_city"]
         kinds = {c["kind"]: c["count_label"] for c in cb}
-        self.assertIn("競売/公告-新規", kinds)
-        self.assertIn("競売/公告-再公告", kinds)
+        self.assertIn("競売/公告-初出", kinds)
+        self.assertIn("競売/公告-再出", kinds)
         self.assertNotIn("競売/公告", kinds)     # 親は出さない
-        self.assertEqual(kinds["競売/公告-再公告"], "1-2")
+        self.assertEqual(kinds["競売/公告-再出"], "1-2")
 
     def test_内部の目印が公開ファイルに漏れない(self):
         rows = [self.行(i, "売却") for i in range(4)]
@@ -323,8 +323,8 @@ class 正本32_合計の升と内訳の升を両方出さない(unittest.TestCas
     正本に載っている例そのものを、ここで固定する。
     形を変えるときは、正本のほうも直すこと。
 
-        {"kind": "競売/公告-新規",   "count": null, "count_label": "1-2"}
-        {"kind": "競売/公告-再公告", "count": 0,    "count_label": "0"}
+        {"kind": "競売/公告-初出",   "count": null, "count_label": "1-2"}
+        {"kind": "競売/公告-再出", "count": 0,    "count_label": "0"}
     """
 
     def 行(self, no, status="売却", **kw):
@@ -345,8 +345,8 @@ class 正本32_合計の升と内訳の升を両方出さない(unittest.TestCas
         cb = make_index.build([self.行(1)])["counts_by_city"]
         got = {c["kind"]: (c["count"], c["count_label"]) for c in cb
                if c["kind"].startswith("競売/公告")}
-        self.assertEqual(got, {"競売/公告-新規": (None, "1-2"),
-                               "競売/公告-再公告": (0, "0")})
+        self.assertEqual(got, {"競売/公告-初出": (None, "1-2"),
+                               "競売/公告-再出": (0, "0")})
 
     def test_決まり1_合計の升を出さない(self):
         rows = [self.行(i) for i in range(5)]
@@ -358,8 +358,8 @@ class 正本32_合計の升と内訳の升を両方出さない(unittest.TestCas
         rows = [self.行(i) for i in range(5)]
         cb = make_index.build(rows)["counts_by_city"]
         kinds = {c["kind"] for c in cb}
-        self.assertIn("競売/公告-新規", kinds)
-        self.assertIn("競売/公告-再公告", kinds)
+        self.assertIn("競売/公告-初出", kinds)
+        self.assertIn("競売/公告-再出", kinds)
         self.assertIn("競売/落札", kinds)
         self.assertIn("競売/不調", kinds)
 
@@ -368,7 +368,7 @@ class 正本32_合計の升と内訳の升を両方出さない(unittest.TestCas
         rows = [self.行(i) for i in range(5)]
         cb = make_index.build(rows)["counts_by_city"]
         n = {c["kind"]: (c["count"], c["count_label"]) for c in cb}
-        self.assertEqual(n["競売/公告-再公告"], (0, "0"))
+        self.assertEqual(n["競売/公告-再出"], (0, "0"))
         self.assertEqual(n["競売/不調"], (0, "0"))
         for c in cb:
             if c["count"] is None:
@@ -380,7 +380,7 @@ class 正本32_合計の升と内訳の升を両方出さない(unittest.TestCas
         rows = [self.行(i) for i in range(5)]
         cb = make_index.build(rows)["counts_by_city"]
         n = {c["kind"]: c["count"] for c in cb}
-        self.assertEqual(n["競売/公告-新規"] + n["競売/公告-再公告"], 5)
+        self.assertEqual(n["競売/公告-初出"] + n["競売/公告-再出"], 5)
 
     def test_内訳を足すときは必ずまとまりに書く(self):
         # 「-」でつないだ段階は内訳。FAMILIES に書かずに足すと、
@@ -643,6 +643,79 @@ class テストはdataを書き換えない(unittest.TestCase):
         後 = (os.path.getmtime(元の先)
              if os.path.exists(元の先) else None)
         self.assertEqual(前, 後, "テストが %s を書き換えた" % 元の先)
+
+
+class 名乗れる語だけで数える(unittest.TestCase):
+    """**主語を「こちら」にすると外れない**（2026-09-19）。
+
+        ❌ 新規 / 再公告   事実の主張。こちらが見る前の回があると外れる
+        ✅ 初出 / 再出     観測の記述。外れようがない
+
+    こちらは 2026-09-17 から一覧を重ねている。7月に公告されて9月に
+    再公告された物件も、こちらには「初めて見た回」として届く。
+    それを「新規」と呼ぶのは、**持っていない知識を名乗る**こと。
+    """
+
+    def 行(self, i, saishutsu=False):
+        return {"system": "keibai", "pref": "大阪府", "city": "茨木市",
+                "kind": "土地", "first_seen": "2026-09-17",
+                "seen": ["2026-09-17"],
+                "open_date": "2026-11-05", "status": "",
+                "property_key": "x:%d:1" % i, "key": "x:%d:1:2026-11-05" % i,
+                "saishutsu": saishutsu}
+
+    def test_事実を名乗る語を升に出さない(self):
+        rows = [self.行(i) for i in range(4)]
+        cb = make_index.build(rows)["counts_by_city"]
+        文 = "".join(c["kind"] for c in cb)
+        for 語 in ("新規", "再公告"):
+            self.assertNotIn(語, 文,
+                             "**こちらが見る前を知らない**のに、知っている語で"
+                             "名乗っている（%s）" % 語)
+
+    def test_観測の語で数える(self):
+        rows = [self.行(i) for i in range(4)] + [self.行(9, True)]
+        kinds = {c["kind"] for c in make_index.build(rows)["counts_by_city"]}
+        self.assertIn("競売/公告-初出", kinds)
+        self.assertIn("競売/公告-再出", kinds)
+
+    def test_いつから見ているかを数字の隣に出す(self):
+        """**これが無いと「初出」が読めない。**"""
+        out = make_index.build([self.行(i) for i in range(4)])
+        self.assertIn("observed", out, "いつから見ているかが出ていない")
+        self.assertEqual(out["observed"]["競売"]["from"], "2026-09-17")
+        self.assertEqual(out["observed"]["競売"]["days"], 1)
+
+    def test_重ねた日の数はカレンダーの差ではない(self):
+        """**1日しか重ねていなければ、初出が100%になるのは決まっている。**"""
+        rows = [self.行(0), self.行(1)]
+        rows[1]["seen"] = ["2026-09-17", "2026-09-30"]
+        out = make_index.build(rows)
+        self.assertEqual(out["observed"]["競売"]["days"], 2,
+                         "見た日の数ではなく、日付の幅を数えている")
+
+    def test_行が無い制度は出さない(self):
+        """**空の欄を作って「0日見た」と読ませない。**"""
+        out = make_index.build([self.行(0)])
+        self.assertEqual(list(out["observed"]), ["競売"])
+
+    def test_率を出していない(self):
+        """正本 3.2「分子・分母のどちらかが伏せ字なら、率も出さない」。
+
+            再出率 = 再出 ÷（初出 + 再出）
+            再出が実数で率も出ていれば  初出 = 再出 ÷ 率 − 再出
+
+        伏せた升が**正確に**戻る。実数が出せているのは 46組のうち14組だけ。
+        **率はまだ早い**（DESIGN「率は出さない」）。
+        """
+        out = make_index.build([self.行(i) for i in range(4)])
+        欄 = set()
+        for c in out["counts_by_city"]:
+            欄 |= set(c)
+        for 語 in ("rate", "ratio", "percent", "率"):
+            for k in 欄:
+                self.assertNotIn(語, k, "升に率の欄がある（%s）" % k)
+        self.assertNotIn("rate", set(out))
 
 
 if __name__ == "__main__":

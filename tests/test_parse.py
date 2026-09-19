@@ -773,7 +773,7 @@ class 画面読み上げ用の文字を値にしない(unittest.TestCase):
 class 決めたあとで答えを変えない(unittest.TestCase):
     """**基準が、あとから来たデータで動く**（2026-09-19）。
 
-    `mark_re_notice()` は「その物件で、こちらが知っているいちばん早い回」を
+    `mark_saishutsu()` は「その物件で、こちらが知っているいちばん早い回」を
     基準に新規／再公告を決める。基準は**いま持っているデータ**で決まる。
 
         いま      11月の回だけ見えている        → 新規
@@ -793,12 +793,12 @@ class 決めたあとで答えを変えない(unittest.TestCase):
         m = {}
         一 = self.行("A", "2026-11-05")
         m[一["key"]] = 一
-        parse.mark_re_notice(m)
-        self.assertFalse(m["A:2026-11-05"]["re_notice"])
+        parse.mark_saishutsu(m)
+        self.assertFalse(m["A:2026-11-05"]["saishutsu"])
 
         m["A:2026-08-01"] = self.行("A", "2026-08-01", "2026-10-05")
-        _, 裏返り = parse.mark_re_notice(m)
-        self.assertFalse(m["A:2026-11-05"]["re_notice"],
+        _, 裏返り = parse.mark_saishutsu(m)
+        self.assertFalse(m["A:2026-11-05"]["saishutsu"],
                          "決めた値が動いた。公開した升が黙って入れ替わる")
         self.assertEqual(len(裏返り), 1, "動かさなかったことを控えていない")
         self.assertEqual(裏返り[0][0], "A:2026-11-05")
@@ -809,21 +809,21 @@ class 決めたあとで答えを変えない(unittest.TestCase):
         m = {}
         m["B:2026-08-01"] = self.行("B", "2026-08-01")
         m["B:2026-11-05"] = self.行("B", "2026-11-05")
-        parse.mark_re_notice(m)
-        self.assertFalse(m["B:2026-08-01"]["re_notice"])
-        self.assertTrue(m["B:2026-11-05"]["re_notice"])
+        parse.mark_saishutsu(m)
+        self.assertFalse(m["B:2026-08-01"]["saishutsu"])
+        self.assertTrue(m["B:2026-11-05"]["saishutsu"])
 
     def test_重ねるときに持ち越す(self):
         """`first_seen` と同じ扱い。持ち越さないと毎回いちから決め直す。"""
         merged = {}
         parse.merge_snapshot(merged, [self.行("C", "2026-11-05")], "2026-09-17")
-        parse.mark_re_notice(merged)
-        self.assertIn("re_notice", merged["C:2026-11-05"])
-        # 次の日、同じ物件がまた一覧に出る（読み取りは re_notice を持たない）
+        parse.mark_saishutsu(merged)
+        self.assertIn("saishutsu", merged["C:2026-11-05"])
+        # 次の日、同じ物件がまた一覧に出る（読み取りは saishutsu を持たない）
         新 = self.行("C", "2026-11-05")
-        self.assertNotIn("re_notice", 新)
+        self.assertNotIn("saishutsu", 新)
         parse.merge_snapshot(merged, [新], "2026-09-18")
-        self.assertIn("re_notice", merged["C:2026-11-05"],
+        self.assertIn("saishutsu", merged["C:2026-11-05"],
                       "重ねたときに決めた値が落ちている")
 
     def test_親の合計は変わらないので足し算では気づけない(self):
@@ -843,16 +843,16 @@ class 決めたあとで答えを変えない(unittest.TestCase):
 
         前 = {}
         前["D:2026-11-05"] = self.行("D", "2026-11-05")
-        parse.mark_re_notice(前)
+        parse.mark_saishutsu(前)
         後 = {"D:2026-11-05": self.行("D", "2026-11-05"),
               "D:2026-08-01": self.行("D", "2026-08-01", "2026-10-05")}
-        parse.mark_re_notice(後)
+        parse.mark_saishutsu(後)
         # 親（公告）の 2026-09 は、どちらも 1 のまま
         self.assertEqual(升(前)[("公告", "2026-09")], 1)
         self.assertEqual(升(後)[("公告", "2026-09")], 1)
         # なのに子は入れ替わっている
-        self.assertEqual(升(前)[("公告-新規", "2026-09")], 1)
-        self.assertEqual(升(後)[("公告-再公告", "2026-09")], 1)
+        self.assertEqual(升(前)[("公告-初出", "2026-09")], 1)
+        self.assertEqual(升(後)[("公告-再出", "2026-09")], 1)
 
 
 class あとから答えが変わった行の控え(unittest.TestCase):

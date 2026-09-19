@@ -2,12 +2,18 @@
  "site": "keibai-toukei",
  "site_name": "競売統計",
  "generated_at": "2026-09-19",
+ "observed": {
+  "競売": {
+   "from": "2026-09-17",
+   "days": 1
+  }
+ },
  "records": [],
  "counts_by_city": [
   {
    "city_code": "27106",
    "city": "大阪市西区",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -15,7 +21,7 @@
   {
    "city_code": "27106",
    "city": "大阪市西区",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -23,7 +29,7 @@
   {
    "city_code": "27107",
    "city": "大阪市港区",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -31,7 +37,7 @@
   {
    "city_code": "27107",
    "city": "大阪市港区",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -39,7 +45,7 @@
   {
    "city_code": "27109",
    "city": "大阪市天王寺区",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -47,7 +53,7 @@
   {
    "city_code": "27109",
    "city": "大阪市天王寺区",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -55,7 +61,7 @@
   {
    "city_code": "27114",
    "city": "大阪市東淀川区",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -63,7 +69,7 @@
   {
    "city_code": "27114",
    "city": "大阪市東淀川区",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -71,7 +77,7 @@
   {
    "city_code": "27119",
    "city": "大阪市阿倍野区",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -79,7 +85,7 @@
   {
    "city_code": "27119",
    "city": "大阪市阿倍野区",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -87,7 +93,7 @@
   {
    "city_code": "27120",
    "city": "大阪市住吉区",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -95,7 +101,7 @@
   {
    "city_code": "27120",
    "city": "大阪市住吉区",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -103,7 +109,7 @@
   {
    "city_code": "27121",
    "city": "大阪市東住吉区",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -111,7 +117,7 @@
   {
    "city_code": "27121",
    "city": "大阪市東住吉区",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -119,7 +125,7 @@
   {
    "city_code": "27123",
    "city": "大阪市淀川区",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -127,7 +133,7 @@
   {
    "city_code": "27123",
    "city": "大阪市淀川区",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -135,7 +141,7 @@
   {
    "city_code": "27125",
    "city": "大阪市住之江区",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -143,7 +149,7 @@
   {
    "city_code": "27125",
    "city": "大阪市住之江区",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -151,7 +157,7 @@
   {
    "city_code": "27203",
    "city": "豊中市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -159,7 +165,7 @@
   {
    "city_code": "27203",
    "city": "豊中市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": 3,
    "count_label": "3"
@@ -167,7 +173,7 @@
   {
    "city_code": "27204",
    "city": "池田市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -175,7 +181,7 @@
   {
    "city_code": "27204",
    "city": "池田市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -183,7 +189,7 @@
   {
    "city_code": "27207",
    "city": "高槻市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -191,7 +197,7 @@
   {
    "city_code": "27207",
    "city": "高槻市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -199,7 +205,7 @@
   {
    "city_code": "27209",
    "city": "守口市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -207,7 +213,7 @@
   {
    "city_code": "27209",
    "city": "守口市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -215,7 +221,7 @@
   {
    "city_code": "27211",
    "city": "茨木市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -223,7 +229,7 @@
   {
    "city_code": "27211",
    "city": "茨木市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": 3,
    "count_label": "3"
@@ -231,7 +237,7 @@
   {
    "city_code": "27212",
    "city": "八尾市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -239,7 +245,7 @@
   {
    "city_code": "27212",
    "city": "八尾市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": 4,
    "count_label": "4"
@@ -247,7 +253,7 @@
   {
    "city_code": "27215",
    "city": "寝屋川市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -255,7 +261,7 @@
   {
    "city_code": "27215",
    "city": "寝屋川市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -263,7 +269,7 @@
   {
    "city_code": "27218",
    "city": "大東市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -271,7 +277,7 @@
   {
    "city_code": "27218",
    "city": "大東市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -279,7 +285,7 @@
   {
    "city_code": "27223",
    "city": "門真市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -287,7 +293,7 @@
   {
    "city_code": "27223",
    "city": "門真市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -295,7 +301,7 @@
   {
    "city_code": "27227",
    "city": "東大阪市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -303,7 +309,7 @@
   {
    "city_code": "27227",
    "city": "東大阪市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": 11,
    "count_label": "11"
@@ -311,7 +317,7 @@
   {
    "city_code": "27229",
    "city": "四條畷市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -319,7 +325,7 @@
   {
    "city_code": "27229",
    "city": "四條畷市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -327,7 +333,7 @@
   {
    "city_code": "28102",
    "city": "神戸市灘区",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -335,7 +341,7 @@
   {
    "city_code": "28102",
    "city": "神戸市灘区",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -343,7 +349,7 @@
   {
    "city_code": "28105",
    "city": "神戸市兵庫区",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -351,7 +357,7 @@
   {
    "city_code": "28105",
    "city": "神戸市兵庫区",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -359,7 +365,7 @@
   {
    "city_code": "28106",
    "city": "神戸市長田区",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -367,7 +373,7 @@
   {
    "city_code": "28106",
    "city": "神戸市長田区",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": 3,
    "count_label": "3"
@@ -375,7 +381,7 @@
   {
    "city_code": "28107",
    "city": "神戸市須磨区",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -383,7 +389,7 @@
   {
    "city_code": "28107",
    "city": "神戸市須磨区",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": 3,
    "count_label": "3"
@@ -391,7 +397,7 @@
   {
    "city_code": "28108",
    "city": "神戸市垂水区",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -399,7 +405,7 @@
   {
    "city_code": "28108",
    "city": "神戸市垂水区",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -407,7 +413,7 @@
   {
    "city_code": "28109",
    "city": "神戸市北区",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -415,7 +421,7 @@
   {
    "city_code": "28109",
    "city": "神戸市北区",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": 6,
    "count_label": "6"
@@ -423,7 +429,7 @@
   {
    "city_code": "28111",
    "city": "神戸市西区",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -431,7 +437,7 @@
   {
    "city_code": "28111",
    "city": "神戸市西区",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": 3,
    "count_label": "3"
@@ -439,7 +445,7 @@
   {
    "city_code": "28201",
    "city": "姫路市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -447,7 +453,7 @@
   {
    "city_code": "28201",
    "city": "姫路市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": 9,
    "count_label": "9"
@@ -455,7 +461,7 @@
   {
    "city_code": "28202",
    "city": "尼崎市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -463,7 +469,7 @@
   {
    "city_code": "28202",
    "city": "尼崎市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": 3,
    "count_label": "3"
@@ -471,7 +477,7 @@
   {
    "city_code": "28203",
    "city": "明石市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -479,7 +485,7 @@
   {
    "city_code": "28203",
    "city": "明石市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": 7,
    "count_label": "7"
@@ -487,7 +493,7 @@
   {
    "city_code": "28204",
    "city": "西宮市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -495,7 +501,7 @@
   {
    "city_code": "28204",
    "city": "西宮市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": 4,
    "count_label": "4"
@@ -503,7 +509,7 @@
   {
    "city_code": "28205",
    "city": "洲本市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -511,7 +517,7 @@
   {
    "city_code": "28205",
    "city": "洲本市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -519,7 +525,7 @@
   {
    "city_code": "28207",
    "city": "伊丹市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -527,7 +533,7 @@
   {
    "city_code": "28207",
    "city": "伊丹市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -535,7 +541,7 @@
   {
    "city_code": "28210",
    "city": "加古川市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -543,7 +549,7 @@
   {
    "city_code": "28210",
    "city": "加古川市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": 4,
    "count_label": "4"
@@ -551,7 +557,7 @@
   {
    "city_code": "28212",
    "city": "赤穂市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -559,7 +565,7 @@
   {
    "city_code": "28212",
    "city": "赤穂市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -567,7 +573,7 @@
   {
    "city_code": "28214",
    "city": "宝塚市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -575,7 +581,7 @@
   {
    "city_code": "28214",
    "city": "宝塚市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": 3,
    "count_label": "3"
@@ -583,7 +589,7 @@
   {
    "city_code": "28215",
    "city": "三木市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -591,7 +597,7 @@
   {
    "city_code": "28215",
    "city": "三木市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -599,7 +605,7 @@
   {
    "city_code": "28216",
    "city": "高砂市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -607,7 +613,7 @@
   {
    "city_code": "28216",
    "city": "高砂市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -615,7 +621,7 @@
   {
    "city_code": "28217",
    "city": "川西市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -623,7 +629,7 @@
   {
    "city_code": "28217",
    "city": "川西市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -631,7 +637,7 @@
   {
    "city_code": "28218",
    "city": "小野市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -639,7 +645,7 @@
   {
    "city_code": "28218",
    "city": "小野市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -647,7 +653,7 @@
   {
    "city_code": "28219",
    "city": "三田市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -655,7 +661,7 @@
   {
    "city_code": "28219",
    "city": "三田市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -663,7 +669,7 @@
   {
    "city_code": "28220",
    "city": "加西市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -671,7 +677,7 @@
   {
    "city_code": "28220",
    "city": "加西市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -679,7 +685,7 @@
   {
    "city_code": "28224",
    "city": "南あわじ市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -687,7 +693,7 @@
   {
    "city_code": "28224",
    "city": "南あわじ市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -695,7 +701,7 @@
   {
    "city_code": "28226",
    "city": "淡路市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -703,7 +709,7 @@
   {
    "city_code": "28226",
    "city": "淡路市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -711,7 +717,7 @@
   {
    "city_code": "28228",
    "city": "加東市",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -719,7 +725,7 @@
   {
    "city_code": "28228",
    "city": "加東市",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"
@@ -727,7 +733,7 @@
   {
    "city_code": "28301",
    "city": "猪名川町",
-   "kind": "競売/公告-再公告",
+   "kind": "競売/公告-再出",
    "period": "2026-09",
    "count": 0,
    "count_label": "0"
@@ -735,7 +741,7 @@
   {
    "city_code": "28301",
    "city": "猪名川町",
-   "kind": "競売/公告-新規",
+   "kind": "競売/公告-初出",
    "period": "2026-09",
    "count": null,
    "count_label": "1-2"

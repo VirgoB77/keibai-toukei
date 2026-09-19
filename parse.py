@@ -1054,14 +1054,19 @@ def load_rows(court_id):
         return {}
 
 
-def mark_re_notice(merged):
-    """2回目以降の公告に印をつける。
+def mark_saishutsu(merged):
+    """**こちらが前にも見ている回**に印をつける。
 
     競売には「9月 公告 → 10月 開札 → 不調 → 11月 また公告」という流れがある。
     （相手のページには「不売」と出る。こちらが書く語は「不調」。正本 6節）
     合計だけを見ていると、不調が続く不況期に件数が勝手に増えて、
     「市場が活発になった」と逆に読めてしまう。これがいちばんこわい間違い。
-    だから、初めての公告と、2回目以降を分けられるようにしておく。
+    だから、初めて見た回と、前にも見ている回を分けられるようにしておく。
+
+    **「再公告」ではなく「再出」**（2026-09-19 に名前を直した）。
+    こちらが分かるのは「こちらが前にも見たか」だけ。
+    相手が2回目の公告を出したのかどうかは、こちらが見る前を知らないので
+    分からない。**持っていない知識を名乗らない。**
     """
     first = {}
     for r in merged.values():
@@ -1075,9 +1080,9 @@ def mark_re_notice(merged):
     for r in merged.values():
         pk = r.get("property_key")
         いま = bool(pk and (r.get("open_date") or "") != first.get(pk))
-        前 = r.get("re_notice")
+        前 = r.get("saishutsu")
         if 前 is None:
-            r["re_notice"] = いま
+            r["saishutsu"] = いま
         elif bool(前) != いま:
             # **決めた値は動かさない。** 動かすと、公開した升が黙って入れ替わる
             裏返り.append((r.get("key"), bool(前), いま))
@@ -1087,7 +1092,7 @@ def mark_re_notice(merged):
 def write_uragaeri(裏返り):
     """**決めたあとに答えが変わった行**を控える（2026-09-19）。
 
-    `mark_re_notice()` は「その物件で、こちらが知っているいちばん早い回」を
+    `mark_saishutsu()` は「その物件で、こちらが知っているいちばん早い回」を
     基準に新規／再公告を決める。**基準が、あとから来たデータで動く。**
 
         いま      11月の回だけ見えている        → 新規
@@ -1109,7 +1114,7 @@ def write_uragaeri(裏返り):
         return
     lines = [report.not_public("あとから答えが変わった行（%d 件）" % len(裏返り))]
     lines.append("")
-    lines.append("`re_notice`（新規か再公告か）を決めたあとで、"
+    lines.append("`saishutsu`（初出か再出か）を決めたあとで、"
                  "より早い回のデータが入った。")
     lines.append("**決めた値は動かしていない。** 公開した升が黙って"
                  "入れ替わらないようにするため。")
@@ -1149,10 +1154,15 @@ def merge_snapshot(merged, rows, day):
             r["first_seen"] = day
             r["seen"] = [day]
         # **一度決めた「新規か再公告か」を持ち越す**（2026-09-19）。
-        # `first_seen` と同じ扱い。持ち越さないと `mark_re_notice()` が
+        # `first_seen` と同じ扱い。持ち越さないと `mark_saishutsu()` が
         # 毎回いちから決め直し、**あとから早い回が入った日に過去が裏返る**
-        if old and "re_notice" in old:
-            r["re_notice"] = old["re_notice"]
+        if old:
+            # `re_notice` は 2026-09-19 まで使っていた名前。
+            # **名前を直しても、決めた値は失わない。**
+            # 保存済みの行が書き直されたら、この渡りは要らなくなる
+            前 = old.get("saishutsu", old.get("re_notice"))
+            if 前 is not None:
+                r["saishutsu"] = 前
         r["last_seen"] = day
         merged[r["key"]] = r
 
@@ -1276,7 +1286,7 @@ def main():
     for court_id in sorted(merged):
         if not merged[court_id]:
             continue
-        _, 裏返り = mark_re_notice(merged[court_id])
+        _, 裏返り = mark_saishutsu(merged[court_id])
         uragaeri += [(court_id,) + x for x in 裏返り]
         rows = sorted(merged[court_id].values(), key=lambda r: r["key"])
         name = names.get(court_id, court_id)

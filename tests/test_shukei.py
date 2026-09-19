@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common.shukei import Families, must_hide_parent, yoyuu  # noqa: E402
 
 競売 = Families(("結果", "落札", "不調"),
-                ("公告", "公告-新規", "公告-再公告"))
+                ("公告", "公告-初出", "公告-再出"))
 
 
 class 登録表(unittest.TestCase):
@@ -25,7 +25,7 @@ class 登録表(unittest.TestCase):
     def test_親と子を引ける(self):
         self.assertEqual(競売.parents, ("結果", "公告"))
         self.assertEqual(競売.children,
-                         ("落札", "不調", "公告-新規", "公告-再公告"))
+                         ("落札", "不調", "公告-初出", "公告-再出"))
 
     def test_段階からまとまりを引ける(self):
         self.assertEqual(競売.family_of("不調"),
@@ -36,7 +36,7 @@ class 登録表(unittest.TestCase):
 
     def test_親かどうかを引ける(self):
         self.assertTrue(競売.is_parent("公告"))
-        self.assertFalse(競売.is_parent("公告-新規"))
+        self.assertFalse(競売.is_parent("公告-初出"))
         self.assertFalse(競売.is_parent("取下げ"))
 
 
@@ -100,7 +100,7 @@ class 子の名前は2通りある(unittest.TestCase):
         種別には段階も結果も入る
         段階なら 競売/公告、結果なら 競売/落札・競売/不調
         **段階と結果を1つの升に混ぜない**
-        種別の中をさらに分けるときは - でつなぐ（競売/公告-新規）
+        種別の中をさらに分けるときは - でつなぐ（競売/公告-初出）
 
     だから子は「親-…」の形（内訳）か、親の取りうる値（落札・不調）の
     どちらか。**「子は 親-… で始まる」という検査はもう掛けられない。**
@@ -113,9 +113,9 @@ class 子の名前は2通りある(unittest.TestCase):
         self.assertFalse(f.is_parent("落札"))
 
     def test_内訳の形なら親の内訳でなければならない(self):
-        """「公告-新規」を結果のまとまりに登録する書き間違いは、まだ拾える。"""
+        """「公告-初出」を結果のまとまりに登録する書き間違いは、まだ拾える。"""
         with self.assertRaises(ValueError):
-            Families(("結果", "公告-新規", "不調"))
+            Families(("結果", "公告-初出", "不調"))
 
     def test_内訳が1つのまとまりは登録できない(self):
         """**合計の升は2つ以上の内訳に分かれる。**
@@ -146,7 +146,7 @@ class 子の名前は2通りある(unittest.TestCase):
         検査を外しても全部通ることが分かった。
         """
         with self.assertRaises(ValueError):
-            Families(("結果", "落札", "不調"), ("公告", "公告-新規", "落札"))
+            Families(("結果", "落札", "不調"), ("公告", "公告-初出", "落札"))
 
     def test_子がほかのまとまりの親と同じ名前なら止める(self):
         """親は出さない升。子の名前と重なると、
@@ -166,7 +166,7 @@ class 足したときに数が合うこと(unittest.TestCase):
 
     def setUp(self):
         self.f = Families(("結果", "落札", "不調"),
-                          ("公告", "公告-新規", "公告-再公告"))
+                          ("公告", "公告-初出", "公告-再出"))
 
     def test_合っていれば空(self):
         self.assertEqual(
@@ -184,13 +184,13 @@ class 足したときに数が合うこと(unittest.TestCase):
 
     def test_親が出ていないまとまりは飛ばす(self):
         """そのまとまりの升が1つも無い月。**無いものを咎めない。**"""
-        self.assertEqual(self.f.check_sums({"公告": 3, "公告-新規": 3,
-                                            "公告-再公告": 0}), [])
+        self.assertEqual(self.f.check_sums({"公告": 3, "公告-初出": 3,
+                                            "公告-再出": 0}), [])
 
     def test_最初の1件で止まらない(self):
         """**検査は最初の1件で止まらない形にする**（正本 9節）。"""
         bad = self.f.check_sums({"結果": 6, "落札": 4, "不調": 1,
-                                 "公告": 9, "公告-新規": 5, "公告-再公告": 1})
+                                 "公告": 9, "公告-初出": 5, "公告-再出": 1})
         self.assertEqual(len(bad), 2, "2つ壊したのに1つしか出ていない")
 
     def test_親子ではない並びは数で落ちる(self):

@@ -107,7 +107,7 @@ class ガード3_1件2件はぼかす(unittest.TestCase):
         # 公告日が分からない行は公告の升に入らない。
         # 入っていないまとまりの兄弟まで 0 で作ると、無い月の升が増える
         cells = aggregate.aggregate([行(status="売却")])
-        self.assertNotIn("公告-再公告", {c["stage"] for c in cells})
+        self.assertNotIn("公告-再出", {c["stage"] for c in cells})
 
     def test_小さい升は実数を出さず_ラベルで見せる(self):
         cells = aggregate.aggregate([行(status="不売")])
@@ -252,7 +252,7 @@ class 入札中と売却済みを混ぜない(unittest.TestCase):
             行(status="不売", first_seen="2026-09-02"),
         ])
         self.assertEqual({c["stage"] for c in cells},
-                         {"公告", "公告-新規", "公告-再公告",
+                         {"公告", "公告-初出", "公告-再出",
                           "結果", "落札", "不調"})
 
     def test_1つの回が公告と結果の両方に入る(self):
@@ -262,44 +262,44 @@ class 入札中と売却済みを混ぜない(unittest.TestCase):
             行(status="売却", first_seen="2026-09-02", open_date="2026-10-06"),
         ])
         got = {(c["stage"], c["ym"]) for c in cells}
-        self.assertEqual(got, {("公告", "2026-09"), ("公告-新規", "2026-09"),
-                               ("公告-再公告", "2026-09"),
+        self.assertEqual(got, {("公告", "2026-09"), ("公告-初出", "2026-09"),
+                               ("公告-再出", "2026-09"),
                                ("結果", "2026-10"), ("落札", "2026-10"),
                                ("不調", "2026-10")})
 
     def test_再公告は新規に数えない(self):
         # 不売のあと、また公告に出た回。合計には入るが新規には入らない。
-        # **再公告の升も出す。** 出さないと「公告 − 公告-新規」の引き算で
+        # **再公告の升も出す。** 出さないと「公告 − 公告-初出」の引き算で
         # 再公告の正確な件数が分かってしまう（正本 3.2）
         cells = aggregate.aggregate([
-            行(status="", first_seen="2026-11-02", re_notice=True),
+            行(status="", first_seen="2026-11-02", saishutsu=True),
         ])
         self.assertEqual({c["stage"] for c in cells},
-                         {"公告", "公告-新規", "公告-再公告"})
+                         {"公告", "公告-初出", "公告-再出"})
         n = {c["stage"]: c["count"] for c in cells}
-        self.assertEqual(n["公告-新規"], 0)      # 新規は1件も無かった
+        self.assertEqual(n["公告-初出"], 0)      # 新規は1件も無かった
 
     def test_新規と再公告を足すと公告になる(self):
         cells = aggregate.aggregate([
             行(status="", first_seen="2026-11-02"),
-            行(status="", first_seen="2026-11-05", re_notice=True, case_no="別"),
-            行(status="", first_seen="2026-11-06", re_notice=True, case_no="別2"),
+            行(status="", first_seen="2026-11-05", saishutsu=True, case_no="別"),
+            行(status="", first_seen="2026-11-06", saishutsu=True, case_no="別2"),
         ])
         n = {c["stage"]: c["count"] for c in cells}
         self.assertEqual(n["公告"], 3)
-        self.assertIsNone(n["公告-新規"])        # 1件なのでぼかす
-        self.assertIsNone(n["公告-再公告"])      # 2件なのでぼかす
+        self.assertIsNone(n["公告-初出"])        # 1件なのでぼかす
+        self.assertIsNone(n["公告-再出"])      # 2件なのでぼかす
 
     def test_新規だけを見れば新しく出た担保が分かる(self):
         cells = aggregate.aggregate([
             行(status="", first_seen="2026-11-02"),
-            行(status="", first_seen="2026-11-05", re_notice=True,
+            行(status="", first_seen="2026-11-05", saishutsu=True,
               case_no="別"),
-            行(status="", first_seen="2026-11-06", re_notice=True,
+            行(status="", first_seen="2026-11-06", saishutsu=True,
               case_no="別2"),
         ])
         kokoku = [c for c in cells if c["stage"] == "公告"][0]
-        shinki = [c for c in cells if c["stage"] == "公告-新規"][0]
+        shinki = [c for c in cells if c["stage"] == "公告-初出"][0]
         self.assertEqual(kokoku["count"], 3)
         self.assertIsNone(shinki["count"])      # 1件なので伏せる
         self.assertEqual(shinki["count_label"], "1-2")
@@ -374,7 +374,7 @@ class 段階は3つのまま(unittest.TestCase):
     def test_子は内訳か結果の語のどちらか(self):
         """子は2通りある（正本 6節）。
 
-            公告-新規   段階の内訳。**親-… の形**
+            公告-初出   段階の内訳。**親-… の形**
             落札        結果の語。**親の接頭辞を持たない**
         """
         for f in aggregate.FAMILIES.families:
@@ -854,7 +854,7 @@ class 登録していない段階を升に出さない(unittest.TestCase):
                   open_date="2026-09-10"),
                 行(status="不売", first_seen="2026-09-01",
                   open_date="2026-09-10", case_no="別"),
-                行(status="", first_seen="2026-09-01", re_notice=True,
+                行(status="", first_seen="2026-09-01", saishutsu=True,
                   case_no="別2")]
         登録 = set(aggregate.FAMILIES.parents) | set(aggregate.FAMILIES.children)
         for c in aggregate.aggregate(rows, with_raw=True):
