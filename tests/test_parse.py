@@ -904,5 +904,52 @@ class あとから答えが変わった行の控え(unittest.TestCase):
         self.assertNotIn("::error::", 画面)
 
 
+class 平米と名乗る欄に平米だけを入れる(unittest.TestCase):
+    """`area_sqm` / `floor_sqm` は**平米だと名乗っている**（2026-09-20）。
+
+    前の `to_area` は「文字列に出てくる最初の数」を返していた。
+
+        築40年   → 40.0     年を面積にしていた
+        3階建    → 3.0      階を面積にしていた
+        600坪    → 600.0    本当は 1,983㎡。**3.3倍ずれる**
+
+    どれも検査が1本も無かった。読めない欄は None にして、
+    **読めなかったことを残す**（正本 9節）。
+
+    **材料は、単位の違うものを渡さないと見分けられない。**
+    数だけを渡すと、単位を見ていても見ていなくても同じ値が出る。
+    """
+
+    def test_平米はそのまま(self):
+        self.assertEqual(parse.to_area("1,234㎡"), 1234.0)
+        self.assertEqual(parse.to_area("約120㎡"), 120.0)
+        self.assertEqual(parse.to_area("1234.5m2"), 1234.5)
+
+    def test_BITの欠けたmも面積として読む(self):
+        """BIT は `m<sup>2</sup>`。読むと 2 が別のかたまりになって落ちる。
+
+        実測（2026-09-20）: 33111 の一覧で面積はすべて `1332.00m` の形。
+        ここを落とすと **105行の床面積が丸ごと消える**（実測）。
+        """
+        self.assertEqual(parse.to_area("1332.00m"), 1332.0)
+
+    def test_単位が無い欄は数だけ読む(self):
+        """見出しに「（平方メートル）」と書いてある表。堺市がこの形。"""
+        self.assertEqual(parse.to_area("1591.58"), 1591.58)
+
+    def test_坪は平米に直す(self):
+        self.assertEqual(parse.to_area("600坪"), 1983.47)
+        self.assertEqual(parse.to_area("1坪"), 3.31)
+
+    def test_面積でないものを面積にしない(self):
+        for t in ("築40年", "3階建", "3階建て", "昭和55年建築", "令和6年", "5室"):
+            self.assertIsNone(parse.to_area(t),
+                              "%s を面積として読んでいる" % t)
+
+    def test_読めないものはNone(self):
+        for t in ("-", "不明", "", None):
+            self.assertIsNone(parse.to_area(t))
+
+
 if __name__ == "__main__":
     unittest.main()
