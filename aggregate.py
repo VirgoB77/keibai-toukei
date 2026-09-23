@@ -466,7 +466,8 @@ YUKUE_KEY = {"取下げ": "undecided", "消えた": "gone",
 # 語をいくつ足しても `unobserved` は1件も減らない。
 #
 # いまは空。競売の結果は `bit-result` が画面遷移 POST で URL を持たず
-# `enabled: false`、読み取りも無い（`parse.INBOX_READABLE`）。
+# 自動では取りに行かない（`manual`。`common/torikata.py` の判定で「取らない」）、
+# 読み取りも無い（`parse.INBOX_READABLE`）。
 # **読み取りを書いた日に、ここへ足す。**
 # 忘れると `unobserved` のまま止まるので、検査で留めてある。
 KEKKA_YOMERU = ()

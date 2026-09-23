@@ -48,6 +48,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from common import site  # noqa: E402  名乗りは1か所から配る
 from common import report  # noqa: E402
+from common import torikata  # noqa: E402  取得元の4語はここ1か所
 from common.jst import today_str  # noqa: E402  日付は日本時間で決める
 from common.jst import today as jst_today  # noqa: E402
 
@@ -627,8 +628,12 @@ def recon_one(src, today, raw_dir, counts, blocked):
         res["skipped"] = "%s送り（制度が別なので、ここでは扱わない）" % src["handoff"]
         res["handoff"] = src["handoff"]
         return res
-    if not src.get("enabled", True):
-        res["skipped"] = src.get("note", "いまは対象外にしている")
+    # **取らない理由は1つの真偽にしない**（正本 9節「『その取得元が使えない』と『その題材が成立しない』を分ける」）。
+    # 4語のどれも非空文字列なので、`if not src.get("torikata")` だと
+    # 「取ってはいけない」にも取りに行く。判定は common/torikata.py 1か所に集める
+    止める = torikata.naze_toranai(src)
+    if 止める:
+        res["skipped"] = 止める
         return res
     if src.get("fetch_every") == "月2回" and jst_today().day not in (1, 15):
         # 中身がめったに変わらないものを毎日叩かない（正本 3.4）
@@ -843,6 +848,39 @@ def main():
     summary = " / ".join("%s %d件" % (k, v) for k, v in sorted(counts.items())) \
         or "対象なし"
     lines.append("**まとめ: %s**" % summary)
+    lines.append("")
+
+    # **取得元と題材を分けて出す**（正本 9節「『その取得元が使えない』と『その題材が成立しない』を分ける」）。
+    # ある取得元が止まっても、題材が止まるとはかぎらない。
+    # 逆に、題材ぜんぶが止まっていることは、ここでしか見えない。
+    # **4つの題材を全部出す。通れないものも出す**（欠けているキーは0ではない）
+    lines.append("### 題材ごとに、通れる取得元があるか")
+    lines.append("")
+    lines.append("| 題材 | 取得元 | 通る | 通れるか |")
+    lines.append("| --- | ---: | ---: | --- |")
+    for name, d in torikata.daizai(sources).items():
+        lines.append("| %s | %d | %d | %s |"
+                     % (name, d["取得元"], d["通る"],
+                        "通れる" if d["通れる"] else "**1つも通らない**"))
+    lines.append("")
+
+    # 取得元の4語の内訳。**取りに行っているのに「取ってよい」ではない数を出す。**
+    # 0 でも出す（黙って通さない）
+    go = {g: sum(1 for x in sources if torikata.go(x) == g) for g in torikata.GO}
+    lines.append("**取得元の欄: %s**"
+                 % " / ".join("%s %d" % (g, go[g]) for g in torikata.GO))
+    kiwa = torikata.kiwadoi(sources)
+    lines.append("")
+    lines.append("**取りに行っているが「取ってよい」ではない取得元: %d 件。**"
+                 % len(kiwa))
+    if kiwa:
+        lines.append("robots は見ているが、規約を読み終えていない。"
+                     "**読み終えるまでは個票を出さない**（正本 3.1）。")
+        lines.append("")
+        for x in kiwa:
+            lines.append("- `%s` … %s（%s）"
+                         % (x["id"], torikata.go(x),
+                            x.get("torikata_riyuu") or "理由が書いていない"))
     lines.append("")
     # **「辿った数: 0 本」と直接書いていた。**
     # 数えていない 0 は、数えた 0 と見分けられない。実測（2026-09-20）:

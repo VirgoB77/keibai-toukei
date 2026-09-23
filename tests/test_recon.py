@@ -9,6 +9,7 @@ DESIGN 1章の決定事項のうち、コードで守れるものをここで縛
     python3 -m unittest discover -s tests
 """
 
+import io
 import json
 import os
 import sys
@@ -17,6 +18,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import recon  # noqa: E402
+from common import torikata  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -127,13 +129,13 @@ class sources_jsonの決まり(unittest.TestCase):
 
     def test_動かす収集先にはURLがある(self):
         for s in self.sources:
-            if s.get("enabled") and not s.get("manual"):
+            if torikata.toru(s):
                 self.assertTrue(s.get("url"), s["id"])
 
     def test_URL未確認のものは止めてある(self):
         for s in self.sources:
             if not s.get("url"):
-                self.assertFalse(s.get("enabled"), s["id"])
+                self.assertFalse(torikata.toru(s), s["id"])
 
     def test_読めないものの列を先に当てる出どころがある(self):
         """**実物を取る前に、何が載るかを知っておく**（2026-09-19）。
@@ -164,7 +166,7 @@ class sources_jsonの決まり(unittest.TestCase):
         for s in self.sources:
             if s.get("manual"):
                 self.assertFalse(
-                    s.get("enabled"), "%s が manual なのに動いている" % s["id"])
+                    torikata.toru(s), "%s が manual なのに動いている" % s["id"])
         self.assertEqual(parse.INBOX_READABLE, ("list",),
                          "読み取りを書いたら、ここと一緒に増やすこと")
 
@@ -369,8 +371,10 @@ class 取りに行ったものを読む前にしまう(unittest.TestCase):
             def 落ちる(*a, **k):
                 raise ValueError("読み取りでわざと落とす")
             recon.analyze = 落ちる
+        # **取得元の欄が要る。** 無いと取りに行かない（きつい側）。
+        # ここを入れ忘れて、この検査3本が「1枚も残っていない」で鳴った
         src = {"id": "test-src", "url": "https://example.test/a",
-               "name": "試験", "system": "keibai"}
+               "name": "試験", "system": "keibai", "torikata": "取ってよい"}
         keep_robots = recon.check_robots
         recon.check_robots = lambda url: (True, "許可", "")
         keep_wait = recon.WAIT
@@ -615,6 +619,160 @@ class 辿った数を数えて出す(unittest.TestCase):
                            self.BASE)
         self.assertEqual(recon.SANTEN_SKIPPED[0], 前,
                          "3点セットが1本も無いのに数が増えた")
+
+
+class 取得元の欄と題材の欄を分ける(unittest.TestCase):
+    """正本 9節「『その取得元が使えない』と『その題材が成立しない』を分ける」。**ある入札サイトが STOP ≠ DB 全体が STOP。**
+
+    前は `enabled` という真偽1つだった。実測（2026-09-21）:
+    `enabled: false` の26件の中身は3種類で、
+    **「取ってはいけない」は1件も無かった。**
+
+        題材が別（姉妹サイト送り）        21
+        GETで再現できない（手で保存）      4
+        相手にその頁が無い                 1
+
+    **真偽を4語に替えるときの罠**も、ここで固定する。
+    4語はどれも非空文字列なので、`if not src.get("torikata")` のままだと
+    **どの語でも真**になり、「取ってはいけない」にも取りに行く。
+    """
+
+    def もと(self, **kw):
+        s = {"id": "x", "url": "https://example.test/a", "system": "keibai",
+             "torikata": "取ってよい"}
+        s.update(kw)
+        return s
+
+    def test_取ってはいけないものは取らない(self):
+        self.assertFalse(torikata.toru(self.もと(torikata="取ってはいけない")))
+
+    def test_知らない語は取らない(self):
+        """**きつい側に倒す。** 綴りが違ったら取りに行かない。"""
+        for g in ("取ってよし", "OK", "true", "", None, "とってよい"):
+            self.assertFalse(torikata.toru(self.もと(torikata=g)),
+                             "知らない語 %r で取りに行っている" % (g,))
+
+    def test_欄が無いものは取らない(self):
+        s = self.もと()
+        del s["torikata"]
+        self.assertFalse(torikata.toru(s))
+
+    def test_取ってよい以外の3語でも取りに行く(self):
+        """**取得元の欄は、取得の可否そのものではない。**
+
+        「未確認」「規約未確定」は、**いま取りに行っていることを
+        止める語ではない**（robots は見ている）。止めるのは
+        「取ってはいけない」だけ。かわりに `kiwadoi()` で数えて出す。
+        """
+        for g in ("未確認", "規約未確定"):
+            self.assertTrue(torikata.toru(self.もと(torikata=g)), g)
+            self.assertEqual(len(torikata.kiwadoi([self.もと(torikata=g)])), 1)
+        self.assertEqual(torikata.kiwadoi([self.もと()]), [])
+
+    def test_取らない理由は1つの真偽にしない(self):
+        """減らす手が違うので、同じ箱に入れない。"""
+        self.assertEqual(torikata.naze_toranai(self.もと(handoff="よそ")),
+                         torikata.RIYUU_DAIZAI)
+        self.assertEqual(torikata.naze_toranai(self.もと(manual=True, url="")),
+                         torikata.RIYUU_TEMOCHI)
+        self.assertEqual(torikata.naze_toranai(self.もと(url="")),
+                         torikata.RIYUU_NAI)
+        self.assertEqual(torikata.naze_toranai(self.もと()), "")
+
+    def test_手で保存するものを相手に無いと名乗らない(self):
+        """**BIT の一覧・結果・過去・取下げは url が空**。
+
+        GETで再現できないから空にしてある。url から先に見ると
+        「相手にその頁が無い」と名乗る（実測 2026-09-21: 4件が誤名乗り）。
+        """
+        self.assertEqual(
+            torikata.naze_toranai(self.もと(manual=True, url="")),
+            torikata.RIYUU_TEMOCHI)
+
+    def test_全部の取得元が4語のどれかを持っている(self):
+        with io.open(os.path.join(ROOT, "sources.json"), encoding="utf-8") as f:
+            src = json.load(f)["sources"]
+        for s in src:
+            self.assertIn(s.get("torikata"), torikata.GO,
+                          "%s に取得元の欄が無い（足した日に黙って取りに行かなくなる）"
+                          % s["id"])
+            self.assertTrue((s.get("torikata_riyuu") or "").strip(),
+                            "%s に取得元の欄の理由が書いていない" % s["id"])
+
+    def test_enabledはもう使わない(self):
+        with io.open(os.path.join(ROOT, "sources.json"), encoding="utf-8") as f:
+            src = json.load(f)["sources"]
+        for s in src:
+            self.assertNotIn("enabled", s,
+                             "%s に真偽の欄が残っている。"
+                             "**4語と真偽を両方持つと、どちらが効くか読めない**"
+                             % s["id"])
+
+    def test_題材は取得元が1つ止まっても止まらない(self):
+        d = torikata.daizai([self.もと(id="a", system="keibai"),
+                             self.もと(id="b", system="keibai",
+                                       torikata="取ってはいけない")])
+        self.assertEqual(d["keibai"], {"取得元": 2, "通る": 1, "通れる": True})
+
+    def test_題材ぜんぶ止まっていることは見える(self):
+        d = torikata.daizai([self.もと(id="a", system="koyu", handoff="よそ")])
+        self.assertFalse(d["koyu"]["通れる"])
+
+    def test_実データの題材(self):
+        """**4つの題材を全部出す。通れないものも出す。**"""
+        with io.open(os.path.join(ROOT, "sources.json"), encoding="utf-8") as f:
+            src = json.load(f)["sources"]
+        d = torikata.daizai(src)
+        self.assertEqual(sorted(d), ["keibai", "kobai", "kokuyu", "koyu"])
+        self.assertTrue(d["keibai"]["通れる"])
+        self.assertFalse(d["koyu"]["通れる"],
+                         "公有財産に通れる取得元ができたなら、"
+                         "姉妹サイト送りの取り決めを見直すこと")
+
+
+class 取る判定はtorikataを通る(unittest.TestCase):
+    """**recon.py が真偽の欄に戻ったら鳴る。**
+
+    前の recon.py は `src.get("enabled", True)` で見ていたので、欄が無いものは
+    「取る」になる。sources.json から enabled を消したまま、判定だけが前に戻ると、
+    「取ってはいけない」の取得元にも robots を見に行く。
+    `torikata.py` の検査だけでは、recon.py がそれを使っているかは分からない。
+    だから recon_one() そのものに渡して、robots を見る手前で止まるかを見る。
+    **外には出ない**（robots を見に行くところを差し替えてある）。
+    """
+
+    def 渡す(self, 語):
+        import tempfile
+        呼んだ = []
+
+        def 見に行った(*a, **k):
+            呼んだ.append(a)
+            raise RuntimeError("robots を見に行くところまで来た")
+
+        keep = recon.check_robots
+        recon.check_robots = 見に行った
+        src = {"id": "shiken", "name": "試験", "system": "keibai",
+               "kind": "bit-schedule", "url": "https://example.invalid/",
+               "torikata": 語, "torikata_riyuu": "試験"}
+        try:
+            res = recon.recon_one(src, "2026-10-01", tempfile.mkdtemp(), {}, {})
+        except RuntimeError:
+            res = None
+        finally:
+            recon.check_robots = keep
+        return 呼んだ, res
+
+    def test_取ってはいけない先はrobotsの手前で止まる(self):
+        呼んだ, res = self.渡す(torikata.TORANAI)
+        self.assertEqual(呼んだ, [],
+                         "「取ってはいけない」の取得元に robots を見に行った。"
+                         "取る判定が torikata を通っていない")
+        self.assertIn(torikata.TORANAI, res["skipped"])
+
+    def test_取ってよい先はrobotsまで行く(self):
+        """**材料が見分けられることの確かめ。** 差し替えが効いていなければ、上の1本は何も見ていない。"""
+        呼んだ, _ = self.渡す(torikata.GO[0])
+        self.assertEqual(len(呼んだ), 1)
 
 
 if __name__ == "__main__":
