@@ -30,6 +30,12 @@
 | `keibai-toukei-raw`（金庫） | inbox・生データ・スナップショット・行データ | **ずっと非公開** |
 | `keibai-toukei`（ここ・公開用） | 集計結果・index.json・生成HTML・Pages | public |
 
+**直す場所はこのリポジトリ**（2026-09-24 から）。
+
+- 本番のコード・公開する文書（README・DESIGN・about）・tests・workflow は、ここで直す
+- raw・inbox・非公開の取得物は金庫（`keibai-toukei-raw`）に置く
+- 金庫からコード・文書をまとめて上書きしない（金庫の `scripts/make_public_tree.py` は廃止した）
+
 **そのまま公開できない生データを持つので、2本に分ける。**
 一度コミットした生データは、public にした日に過去のぶんまで全部公開される。
 「あとで消す」はできない。迷ったら分ける。1本にまとめ直すことはできるが、
