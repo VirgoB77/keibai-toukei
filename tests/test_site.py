@@ -91,7 +91,7 @@ class 名乗りは据え置き(unittest.TestCase):
         確かめた中身:
 
             取りに行く: https://keibai-toukei.com/data/index.json
-            配られているもの: 市区町村 92 / records 0（からっぽ）
+            配られているもの: 升 92 / 市区町村 46 / records 0（からっぽ）
 
         **本体（apex）にすること。** www は 301 で飛ぶ。
         飛ばされる側を入れると index.json のURLが全部リダイレクトになり、

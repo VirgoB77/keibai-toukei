@@ -679,8 +679,13 @@ def main():
     if dropped:
         print("**市区町村コードが引けず index に出せなかった升: %d 個**"
               "（data/index-dropped.md）" % len(dropped))
-    print("行データ %d 件 → 個票 %d 件 / 件数だけ %d 市区町村"
-          % (len(rows), len(index["records"]), len(index["counts_by_city"])))
+    # **升と市区町村は別の数**。ここは升を数えているので升と名乗る
+    市 = {c.get("city_code") for c in index["counts_by_city"]}
+    市.discard(None)
+    市.discard("")
+    print("行データ %d 件 → 個票 %d 件 / 件数だけ %d 升（%d 市区町村）"
+          % (len(rows), len(index["records"]),
+             len(index["counts_by_city"]), len(市)))
 
 
 if __name__ == "__main__":

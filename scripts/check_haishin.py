@@ -148,8 +148,16 @@ def 見る(base):
         return 1
 
     町 = d.get("counts_by_city") or []
-    print("配られているもの: 市区町村 %d / records 0（からっぽ）/ %s"
-          % (len(町), d.get("generated_at") or "（日付なし）"))
+    # **升の数と市区町村の数は別**（正本 6節。升は city_code × kind × period）。
+    # 1つの市が種別と月の数だけ升に分かれるので、升を数えて「市区町村」と
+    # 名乗ると、報告に出す数がそのぶんだけ大きくなる。
+    # 実測（2026-09-20）: 升 92 を「市区町村 92」と名乗っていた。本当は 46。
+    # **数えたものの名前で名乗る**（DESIGN「名乗れる語だけで数える」）
+    市 = {m.get("city_code") for m in 町 if isinstance(m, dict)}
+    市.discard(None)
+    市.discard("")
+    print("配られているもの: 升 %d / 市区町村 %d / records 0（からっぽ）/ %s"
+          % (len(町), len(市), d.get("generated_at") or "（日付なし）"))
     return 0
 
 

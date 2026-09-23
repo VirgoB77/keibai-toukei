@@ -123,10 +123,36 @@ class 配信を見る(unittest.TestCase):
 
     def test_個票がからっぽなら通る(self):
         code, 文 = self.見る(body=json.dumps(
-            {"records": [], "counts_by_city": [1, 2, 3],
+            {"records": [], "counts_by_city": [
+                {"city_code": "27106"}, {"city_code": "27107"},
+                {"city_code": "27108"}],
              "generated_at": "2026-09-19"}))
         self.assertEqual(code, 0, 文)
+        self.assertIn("升 3", 文)
         self.assertIn("市区町村 3", 文)
+
+    def test_升を市区町村と名乗らない(self):
+        """**升と市区町村は別の数**（正本 6節）。
+
+        升は city_code × kind × period。1つの市が種別と月の数だけ
+        升に分かれるから、升を数えて「市区町村」と名乗ると多く出る。
+
+        実測（2026-09-20）: 配っている 92 升を「市区町村 92」と
+        名乗っていた。本当の市区町村は 46。**報告に出す数が外れていた。**
+        前の検査は `counts_by_city` に数字を3つ並べて「市区町村 3」を
+        確かめていたので、**名乗りのほうを固定していた**。
+
+        ここは同じ市の升を2つ渡す。畳んでいなければ 1 にならない。
+        """
+        code, 文 = self.見る(body=json.dumps(
+            {"records": [],
+             "counts_by_city": [
+                 {"city_code": "27106", "kind": "競売/公告-初出"},
+                 {"city_code": "27106", "kind": "競売/公告-再出"}],
+             "generated_at": "2026-09-19"}))
+        self.assertEqual(code, 0, 文)
+        self.assertIn("升 2", 文)
+        self.assertIn("市区町村 1", 文)
 
     def test_個票が入っていたら止める(self):
         """**いちばん出してはいけないもの**（正本 1節）。"""
