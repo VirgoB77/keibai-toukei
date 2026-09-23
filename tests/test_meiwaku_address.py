@@ -42,7 +42,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# 許可リスト。**除外リストにしない**（正本 3.2「許可リストのほうが強い」）。
+# 許可リスト。**除外リストにしない**。
 # 新しい書き方が増えたら、ここに足すほうがきつい側。足し忘れは「落ちる」で済む
 OK_EXACT = ("noreply@anthropic.com", "noreply@github.com")
 OK_SUFFIX = ("@users.noreply.github.com",)
