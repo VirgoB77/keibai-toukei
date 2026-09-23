@@ -166,6 +166,22 @@ NO_STAGE = ""               # 段階が決まらなかった印。升にしな�
 # 升に使ってよい項目。ここに無いものでは束ねない（ガード1・2）
 BUCKET_FIELDS = ("system", "pref", "city", "city_code", "kind", "stage", "ym")
 
+# 升の軸を人が読む語にする。**粒度の文はここから組み立てる。**
+# 手で書いた文だと、軸を足した日に文だけ古いまま残る。
+# 実測（2026-09-20）: 軸は7本あるのに、粒度の文は
+# 「市区町村 × 種別 × 段階 × 月」と4本しか名乗っていなかった。
+# 都道府県は実データで3種（兵庫県66行・大阪府40行・空1行）ある。
+BUCKET_NAME = {"system": "制度", "pref": "都道府県", "city": "市区町村",
+               "city_code": "市区町村コード", "kind": "種別",
+               "stage": "段階", "ym": "月"}
+
+
+def ryudo(fields=BUCKET_FIELDS):
+    """升の粒度を1行にする。**軸を足したら文も動く。**"""
+    # 市区町村コードは市区町村と1対1なので、人に読ませる文では畳む
+    見せる = [f for f in fields if f != "city_code"]
+    return "×".join(BUCKET_NAME[f] for f in 見せる) + "。これより細かくしない"
+
 
 def mask_count(n):
     """1〜2件はぼかす。0件と3件以上はそのまま。
@@ -205,7 +221,17 @@ def stage_of(row):
 
 
 def month_kokoku(row):
-    """公告として数える月。初めて見た日（フロー）。"""
+    """公告として数える月。**こちらが初めて見た日**（フロー）。
+
+    **「その月に公告された」ではない。** 相手が公告した日は
+    こちらの初見より前にありうる。実測（2026-09-20）: 106行のうち
+    **4行**は閲覧開始日（view_start）が 2026-07／08 なのに、
+    こちらの初見が 2026-09 なので 2026-09 の升に入っている。
+    主語を「こちら」にすれば外れない（DESIGN「名乗れる語だけで数える」）。
+
+    `view_start` をここに足さないこと。足すと、その日より前に
+    公告されていたものを「その月に公告された」と名乗ることになる。
+    """
     for k in ("first_seen", "notice_date", "bid_start"):
         if row.get(k):
             return to_month(row[k])
@@ -659,6 +685,19 @@ def kazu_ga_au(rows, cells=None, today=None, cell_rows=None):
     }
 
 
+def yukue_gyou(d):
+    """行方を1行にする。**7語すべてを出す。0でも出す**（正本 6節）。
+
+    同じ規則を `write_kazu` の表（上）は守っていたのに、
+    画面に出すこの1行だけが `if kazu["行方"].get(y)` で 0 を落としていた。
+    実データ 2026-09-20 では `行方: 取下げ 1／待ち 105` としか出ず、
+    **落札・不調・消えた・見に行っていない・読めない の5語が画面から消えていた。**
+    起きなかった語が消えると、「0件だった」と「そもそも数えていない」が
+    見分けられない。**欠けているキーは0ではない。**
+    """
+    return "行方: " + "／".join("%s %d" % (y, d.get(y, 0)) for y in YUKUE)
+
+
 def write_kazu(rows, cells=None, today=None, cell_rows=None):
     """数が合うかを `data/parse-unknown.md` の章に書く。合わなければ落とす。
 
@@ -949,7 +988,35 @@ def write_unresolved(rows, today=None):
             body3.append("| %s | `%s` | %s | %s | %d |" % (k + (n[k],)))
     report.put_chapter(UNKNOWN_PATH, "消えた物件（取下げか繰り越しか未判定）",
                        "\n".join(body3))
-    return len(bad), len(hold), len(lost)
+    # **回の数と物件の数は別**（このファイルの上の「数えるのは回。物件ではない」）。
+    # 「消えた物件: %d 件」と名乗りながら、数えていたのは行（回）だった。
+    # 同じ物件の2つの回が消えれば 2 と出る。物件は1つ。
+    return (len(bad), len(hold), len(lost),
+            len({r.get("property_key") or r.get("key") for r in lost}))
+
+
+def monthly_doc():
+    """`data/agg/monthly.json` に載せる説明。**読む人がここだけで読める形に。**
+
+    main() の中に埋めていたので、**出している説明を検査が一度も読めなかった。**
+    切り出したのは、説明の語が中身とずれていないかを見るため（3段目）。
+    """
+    return {
+        "公開しない": NOT_PUBLIC,
+        "粒度": ryudo(),
+        "段階": "予定／公告／結果 の3つ。段階の内訳は「-」でつなぐ。"
+              "公告＝その月にこちらが見た回（初出＋再出）、公告-初出＝こちらが初めて見た回、"
+              "結果＝開札された回（落札率の分母）。"
+              "**結果の語は 落札／不調 の2つだけ**（正本 6節）。"
+              "落札＝そのうち売れた回、不調＝売れなかった回。"
+              "段階と結果を1つの升に混ぜない",
+        "件数": "count は**回**の数（物件の数ではない）。"
+              "count は機械が読む（null は1か2）。count_label は人に見せる",
+        "件数のぼかし": "1〜2件の升は実数を出さず \"1-2\" と書く",
+        "中央値": "元になった**値**の個数が3未満のときは null。"
+                "件数（回の数）とは別もので、値が欠けている回があると食い違う",
+        "出していない升": "親（合計）の段階。%s。子を足せば出る" % "／".join(FAMILIES.parents),
+    }
 
 
 def main():
@@ -961,8 +1028,7 @@ def main():
     # 集計は毎回作り直せるので、書かずに止めても取り直せないものは失われない。
     # 生データは workflow の `if: always()` で保存ずみ（正本 9節）。
     kazu = write_kazu(rows, cells, today_str())
-    print("行方: " + "／".join("%s %d" % (y, kazu["行方"].get(y, 0))
-                              for y in YUKUE if kazu["行方"].get(y)))
+    print(yukue_gyou(kazu["行方"]))
 
     # **実数は出力に残さない**（with_raw は引き算の手当てと検査のためだけ）
     for c in cells:
@@ -974,38 +1040,26 @@ def main():
     # 読者は子を足せばよい。子は fill_siblings で全部そろえてある。
     parents = [c for c in cells if FAMILIES.is_parent(c["stage"])]
     cells = [c for c in cells if not FAMILIES.is_parent(c["stage"])]
-    out = {
-        "generated_at": today_str(),
-        "公開しない": NOT_PUBLIC,
-        "粒度": "市区町村 × 種別 × 段階 × 月。これより細かくしない",
-        "段階": "予定／公告／結果 の3つ。段階の内訳は「-」でつなぐ。"
-              "公告＝その月に公告された回（初出＋再出）、公告-初出＝こちらが初めて見た回、"
-              "結果＝開札された回（落札率の分母）。"
-              "**結果の語は 落札／不調 の2つだけ**（正本 6節）。"
-              "落札＝そのうち売れた回、不調＝売れなかった回。"
-              "段階と結果を1つの升に混ぜない",
-        "件数": "count は機械が読む（null は1か2）。count_label は人に見せる",
-        "件数のぼかし": "1〜2件の升は実数を出さず \"1-2\" と書く",
-        "中央値": "元になる件数が3未満のときは null",
-        "出していない升": "親（合計）の段階。%s。子を足せば出る" % "／".join(FAMILIES.parents),
-        "cells": cells,
-    }
+    out = dict(monthly_doc(), generated_at=today_str(), cells=cells)
     os.makedirs(os.path.dirname(OUT_PATH), exist_ok=True)
     with open(OUT_PATH, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=1)
         f.write("\n")
     print("行データ %d 件 → 升 %d 個" % (len(rows), len(cells)))
-    bad, hold, lost = write_unresolved(rows, today_str())
+    bad, hold, lost, lost_bukken = write_unresolved(rows, today_str())
     if bad:
         # **升にはしない。** 黙ってもいない
         print("  **段階が決まらなかった行: %d 件**（data/parse-unknown.md）。"
               "升は作っていない。語彙が足りていない印" % bad)
     if hold:
-        print("  置き場が決まっていない値: %d 件（data/parse-unknown.md）。"
+        print("  置き場が決まっていない値が書いてある行: %d 行"
+              "（data/parse-unknown.md）。"
               "読めている。正本が置き場を決めるまで升にしない" % hold)
     if lost:
-        print("  **消えた物件: %d 件**（data/parse-unknown.md）。"
-              "取下げか繰り越しか、再登場を待たないと決められない" % lost)
+        # **回と物件を両方出す。** 同じ物件の2つの回が消えれば 回2／物件1
+        print("  **消えた回: %d 回（物件 %d 件）**（data/parse-unknown.md）。"
+              "取下げか繰り越しか、再登場を待たないと決められない"
+              % (lost, lost_bukken))
     if parents:
         # 何を落としたかは黙らない
         print("  引き算で戻るので出さなかった親の升: %d 個（%s）"
