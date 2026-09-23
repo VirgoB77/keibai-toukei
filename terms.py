@@ -24,6 +24,7 @@ sys.path.insert(0, HERE)
 
 import recon  # noqa: E402
 from common import report  # noqa: E402
+from common import torikata  # noqa: E402  取得元の4語はここ1か所
 from common.jst import today_str  # noqa: E402
 
 RAW_DIR = os.path.join(HERE, "data", "raw")
@@ -144,9 +145,12 @@ def main():
         lines.append("")
         lines.append("- id: `%s`" % src["id"])
         lines.append("- URL: %s" % (src.get("url") or "（未確認）"))
-        if not src.get("enabled", True):
-            lines.append("- **まだ取っていない（%s）**"
-                         % (src.get("note") or "対象外"))
+        lines.append("- 取得元の欄: **%s**（%s）"
+                     % (torikata.go(src) or "（書いていない）",
+                        src.get("torikata_riyuu") or "理由が書いていない"))
+        止める = torikata.naze_toranai(src)
+        if 止める:
+            lines.append("- **まだ取っていない（%s）**" % 止める)
             lines.append("")
             continue
         if note:

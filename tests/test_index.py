@@ -826,7 +826,8 @@ class 原因の違うものを1つの欄に入れない(unittest.TestCase):
         with open(os.path.join(ROOT, "sources.json"), encoding="utf-8") as f:
             srcs = json.load(f)["sources"]
         結果 = [s for s in srcs if s["id"] == "bit-result"][0]
-        self.assertFalse(結果.get("enabled"),
+        from common import torikata
+        self.assertFalse(torikata.toru(結果),
                          "競売の結果を取り始めたなら、not_counted の意味も見直すこと")
 
     def test_正本に聞いてあることを控えてある(self):
