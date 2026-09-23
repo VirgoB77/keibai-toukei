@@ -422,6 +422,12 @@ class 道具2つが同じ木を見ている(unittest.TestCase):
             "**直せないものを見張ると、毎回鳴って誰も見なくなる**:\n"
             + "\n".join(はみ出し))
 
+    def test_外したものには全部理由が書いてある(self):
+        import check_copy
+        for rel, 理由 in check_copy.hazushita(check_copy.HERE):
+            self.assertTrue(理由 and 理由.strip(),
+                            "理由なしで外している: " + rel)
+
 
 class 結果の語は落札と不調だけ(unittest.TestCase):
     """正本 6節（2026-09-19）。**「売却」「不売」「売却済み」とは書かない。**

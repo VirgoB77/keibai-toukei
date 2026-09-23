@@ -8,6 +8,7 @@
     python3 -m unittest discover -s tests
 """
 
+import io
 import json
 import os
 import shutil
@@ -972,6 +973,47 @@ class 出した欄が空になっていないか(unittest.TestCase):
                     continue
                 self.assertFalse(self.空か(v),
                                  "配っている升の %s が空" % k)
+
+
+class 単位の語を手で書かない(unittest.TestCase):
+    """**地図に色を塗る単位の名乗り。**
+
+    「大阪府・兵庫県の 121 **区市町**」と手で書いていた。
+    実測（2026-09-20）: 121 = 市59・区40・町21・**村1**（千早赤阪村）。
+    村が1つだけの日でも、名乗りから落とすと「村は見ていない」と読める。
+
+    **材料は、村を持つものと持たないものの両方でないと見分けられない。**
+    村を含む材料しか渡さなければ、手で書いた「区市町村」でも通ってしまう。
+    """
+
+    def 単位(self, *まち):
+        return [{"code": "%05d" % i, "pref": "大阪府", "city": c}
+                for i, c in enumerate(まち)]
+
+    def test_村があれば村と名乗る(self):
+        self.assertEqual(
+            make_index.unit_go(self.単位("豊中市", "北区", "岬町", "千早赤阪村")),
+            "区市町村")
+
+    def test_村が無ければ村と名乗らない(self):
+        self.assertEqual(
+            make_index.unit_go(self.単位("豊中市", "北区", "岬町")), "区市町")
+
+    def test_知らない字が来たら黙って落とさない(self):
+        語 = make_index.unit_go(self.単位("豊中市", "○○郡"))
+        self.assertIn("市", 語)
+        self.assertIn("郡", 語, "知らない字が名乗りから黙って消えている: " + 語)
+
+    def test_実物の一覧にも村が入っている(self):
+        """**3段目。作り終えた紙を読む。**"""
+        p = os.path.join(make_index.HERE, "data", "jissuu-ritsu.md")
+        if not os.path.exists(p):
+            self.skipTest("jissuu-ritsu.md がまだ無い")
+        with io.open(p, encoding="utf-8") as f:
+            文 = f.read()
+        語 = make_index.unit_go(make_index.map_units())
+        self.assertIn("の %d %s）" % (len(make_index.map_units()), 語), 文,
+                      "紙の名乗りが、いま数えている単位と合っていない")
 
 
 if __name__ == "__main__":

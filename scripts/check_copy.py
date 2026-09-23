@@ -99,11 +99,14 @@ def walk(root, everything=False):
     for cur, dirs, files in os.walk(root):
         rel_dir = os.path.relpath(cur, root).replace(os.sep, "/")
         rel_dir = "" if rel_dir == "." else rel_dir
+        # **どの深さの `__pycache__` も木ではない**（機械が作ったもの）。
+        # 上の階層だけ外していたので、`common/__pycache__` の29本が
+        # 「外した」に混ざり、名乗る木の大きさが 51 → 80 になっていた
         dirs[:] = [d for d in dirs
-                   if everything and d not in (".git", "__pycache__")
-                   or not everything
-                   and not _under("/".join(filter(None, [rel_dir, d])),
-                                  VAULT_ONLY)]
+                   if d not in (".git", "__pycache__")
+                   and (everything
+                        or not _under("/".join(filter(None, [rel_dir, d])),
+                                      VAULT_ONLY))]
         for name in sorted(files):
             if name in SELF:
                 continue
@@ -118,6 +121,37 @@ def walk(root, everything=False):
             if not everything and _under(rel, VAULT_ONLY):
                 continue
             yield rel, os.path.join(cur, name)
+
+
+def hazushita(root, everything=False):
+    """**見なかったものと、その理由**を並べる。
+
+    「43 ファイルを見た」とだけ名乗っていたので、
+    **木に何ファイルあるのかが出ていなかった。**
+    実測（2026-09-20）: 公開する木は 51 ファイル、見たのは 43。
+    外した8つには全部理由が書いてあるのに、名乗りからは
+    「木を全部見た」と読めていた。**見た数だけでは、見ていない数が隠れる。**
+    """
+    out = []
+    for cur, dirs, files in os.walk(root):
+        rel_dir = os.path.relpath(cur, root).replace(os.sep, "/")
+        rel_dir = "" if rel_dir == "." else rel_dir
+        dirs[:] = [d for d in dirs
+                   if d not in (".git", "__pycache__")
+                   and (everything
+                        or not _under("/".join(filter(None, [rel_dir, d])),
+                                      VAULT_ONLY))]
+        for name in sorted(files):
+            rel = "/".join(filter(None, [rel_dir, name]))
+            if not everything and _under(rel, VAULT_ONLY):
+                continue
+            if name in SELF:
+                out.append((rel, "自分自身。NG語を文字列として持っている"))
+            elif name in SKIP_NAME:
+                out.append((rel, SKIP_NAME[name]))
+            elif os.path.splitext(name)[1] in SKIP_SUFFIX:
+                out.append((rel, SKIP_SUFFIX[os.path.splitext(name)[1]]))
+    return out
 
 
 def find(root, everything=False):
@@ -143,8 +177,17 @@ def main(argv):
         print("**例外リストを作らない。** 文脈で言い換えること。")
         print("設計の言葉なら必ず言い換えられる（「安全な側」→「きつい側」）。")
         return 1
-    print("%s に評価の言葉は無かった（%d ファイルを見た）"
-          % (where, sum(1 for _ in walk(HERE, everything))))
+    見た = sum(1 for _ in walk(HERE, everything))
+    外した = hazushita(HERE, everything)
+    # **見た数だけを名乗らない。** 「43 ファイルを見た」とだけ出していたので、
+    # 木に何ファイルあるのかも、何を見ていないのかも出ていなかった。
+    # ここは木の合計を名乗らない。歩くのはこの公開用の木だが、
+    # **VAULT_ONLY の置き場（data/ など。毎朝の実行では金庫につながる）は歩かない**。
+    # 合計と名乗ると、その置き場まで見たように読める。
+    # 見た数と外した数を足すと、VAULT_ONLY を除いたこの木のファイルの数になる。
+    # 外したものに理由が書いてあることは tests/test_public.py が見る
+    print("%s に評価の言葉は無かった（見た %d ファイル / "
+          "理由を書いて外した %d ファイル）" % (where, 見た, len(外した)))
     return 0
 
 

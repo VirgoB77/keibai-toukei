@@ -92,6 +92,12 @@ SANTEN = re.compile(
 # 3点セットを指す綴りだけに絞ってある。
 SANTEN_HREF = re.compile(r"santen|sannten|3ten|3tensetto", re.I)
 
+# **辿らなかった数を、辿らない側で数える。**
+# 報告は「（辿った数: 0 本）」と 0 を直接書いていた。
+# **数えていない 0 は、数えた 0 と見分けられない。**
+# 実測（2026-09-20）: 辿るようにしても 0 のままだった。
+SANTEN_SKIPPED = [0]
+
 
 def is_bit(url):
     """BIT（不動産競売物件情報サイト）のページか。"""
@@ -266,6 +272,7 @@ def follow_links(page, base_url):
             continue
         href = html.unescape(m.group(1))
         if is_santen_link(href, label):
+            SANTEN_SKIPPED[0] += 1
             continue
         if FOLLOW_SKIP.search(label):
             continue
@@ -837,9 +844,17 @@ def main():
         or "対象なし"
     lines.append("**まとめ: %s**" % summary)
     lines.append("")
-    lines.append("**3点セットらしきリンクを見つけた数: %d 本（辿った数: 0 本）／"
+    # **「辿った数: 0 本」と直接書いていた。**
+    # 数えていない 0 は、数えた 0 と見分けられない。実測（2026-09-20）:
+    # 辿るように変えても 0 のままだった。
+    # いまは「辿る先を選ぶところで外した数」を数えて出す。
+    # 辿った数そのものは `tests/test_recon.py` が見る
+    # （辿る先の一覧に3点セットが1本も無いこと）
+    lines.append("**3点セットらしきリンクを見つけた数: %d 本"
+                 "（辿る先を選ぶときに外した %d 本）／"
                  "BITから返ってきたPDFを捨てた数: %d 本**"
-                 % (blocked["santen_links"], blocked["bit_pdf"]))
+                 % (blocked["santen_links"], SANTEN_SKIPPED[0],
+                    blocked["bit_pdf"]))
     lines.append("")
 
     for system in ("keibai", "kobai", "kokuyu", "koyu", "その他"):

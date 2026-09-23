@@ -8,6 +8,7 @@
     python3 -m unittest discover -s tests
 """
 
+import json
 import io
 import os
 import shutil
@@ -1015,6 +1016,147 @@ class not_countedが非0になる道(unittest.TestCase):
         self.assertEqual(sum(欄.values()), 行方,
                          "not_counted の欄と行方の数が合わない")
         self.assertEqual(set(aggregate.YUKUE_KEY.values()), set(欄))
+
+
+class 起きなかった語も画面に出す(unittest.TestCase):
+    """**欠けているキーは0ではない**（正本 6節）。
+
+    `data/parse-unknown.md` の表は7語すべてを出していたのに、
+    画面に出す1行だけが 0 の語を落としていた。実データ 2026-09-20 は
+    `行方: 取下げ 1／待ち 105` としか出ず、**5語が消えていた。**
+
+    **材料は「ほとんどが0」でなければ見分けられない。**
+    7語とも非0の材料を渡すと、落としていても落としていなくても
+    同じ7語が出る。だから2語だけ非0のものを渡す。
+    """
+
+    def test_0の語も数字つきで出る(self):
+        文 = aggregate.yukue_gyou({"取下げ": 1, "待ち": 105})
+        for y in aggregate.YUKUE:
+            self.assertIn(y, 文, "%s が画面から消えている: %s" % (y, 文))
+        self.assertIn("落札 0", 文)
+        self.assertIn("読めない 0", 文)
+        self.assertIn("待ち 105", 文)
+
+    def test_語の数は行方の語の数と同じ(self):
+        文 = aggregate.yukue_gyou({})
+        self.assertEqual(文.count("／") + 1, len(aggregate.YUKUE), 文)
+
+
+class 公告の月を事実として名乗らない(unittest.TestCase):
+    """公告の月は**こちらが初めて見た日**で決めている。
+
+    相手が公告した日（閲覧開始日）はそれより前にありうる。
+    実測（2026-09-20）: 106行のうち **4行** は view_start が
+    2026-07／08 なのに、初見が 2026-09 なので 2026-09 の升に入っている。
+    だから「その月に公告された回」と名乗ってはいけない。
+
+    **材料は、初見の月と相手の日付の月が違うものでなければ見分けられない。**
+    同じ月の行を渡すと、どちらを見ても同じ値になる。
+    """
+
+    def test_初めて見た月で数える(self):
+        r = 行(first_seen="2026-09-03", view_start="2026-08-11",
+               notice_date="2026-07-02")
+        self.assertEqual(aggregate.month_kokoku(r), "2026-09")
+
+    def test_相手の日付で数えていたら気づく(self):
+        r = 行(first_seen="2026-09-03", view_start="2026-08-11")
+        self.assertNotEqual(aggregate.month_kokoku(r), "2026-08",
+                            "相手が公告した月で数えている。"
+                            "それなら『その月に公告された』と名乗り直すこと")
+
+    def test_書いてある説明も観測の語になっている(self):
+        """**出している説明のほうも見る。**"""
+        説明 = aggregate.monthly_doc()["段階"]
+        self.assertIn("こちら", 説明, 説明)
+        self.assertNotIn("その月に公告された", 説明,
+                         "事実の主張に戻っている: " + 説明)
+
+    def test_配っている実物の説明も見る(self):
+        """**3段目。作り終えたファイルを読む。**"""
+        p = os.path.join(aggregate.HERE, "data", "agg", "monthly.json")
+        if not os.path.exists(p):
+            self.skipTest("monthly.json がまだ無い")
+        with io.open(p, encoding="utf-8") as f:
+            出た = json.load(f)
+        self.assertNotIn("その月に公告された", 出た["段階"], 出た["段階"])
+
+
+class 粒度の文は升の軸から作る(unittest.TestCase):
+    """手で書いた文は、軸を足した日に古いまま残る。
+
+    実測（2026-09-20）: 升の軸は7本あるのに、`monthly.json` の粒度は
+    「市区町村 × 種別 × 段階 × 月」と **4本しか名乗っていなかった**。
+    都道府県は実データで3種（兵庫県66行・大阪府40行・空1行）ある。
+    """
+
+    def test_軸を足したら文も伸びる(self):
+        文 = aggregate.ryudo(("city", "stage", "ym"))
+        増 = aggregate.ryudo(("city", "kind", "stage", "ym"))
+        self.assertNotEqual(文, 増, "軸を足しても文が動かない")
+        self.assertIn("種別", 増)
+        self.assertNotIn("種別", 文)
+
+    def test_名乗った軸の数が升の軸の数と合う(self):
+        文 = aggregate.ryudo()
+        # 市区町村コードは市区町村と1対1なので文では畳む。それ以外は全部出す
+        名 = [aggregate.BUCKET_NAME[f] for f in aggregate.BUCKET_FIELDS
+              if f != "city_code"]
+        for n in 名:
+            self.assertIn(n, 文, "%s が粒度の名乗りから抜けている: %s" % (n, 文))
+        self.assertEqual(文.count("×") + 1, len(名), 文)
+
+    def test_軸の名前が全部ついている(self):
+        for f in aggregate.BUCKET_FIELDS:
+            self.assertIn(f, aggregate.BUCKET_NAME,
+                          "升の軸 %s に人が読む名前が無い。"
+                          "足した日に粒度の文から黙って抜ける" % f)
+
+
+class 回と物件を取り違えない(unittest.TestCase):
+    """**数えるのは回。物件ではない**（aggregate.py の上のほうに自分でそう書いてある）。
+
+    それでも画面には「**消えた物件: %d 件**」と出していて、
+    数えていたのは行（回）だった。同じ物件の2つの回が消えれば
+    2 と出る。物件は1つ。
+
+    **材料は、同じ物件の回を2つ渡さないと見分けられない。**
+    物件がすべて別なら、回を数えても物件を数えても同じ値になる。
+    実データ（2026-09-20）は 106行すべて property_key が別なので、
+    **実データでは一生見分けられない。**
+    """
+
+    def 消えた行(self, key, ym):
+        return 行(key="%s:%s" % (key, ym), property_key=key,
+                  open_date="%s-24" % ym, gone_on="%s-25" % ym,
+                  first_seen="%s-01" % ym, status="")
+
+    def test_同じ物件の2つの回は回2で物件1(self):
+        d = tempfile.mkdtemp()
+        keep = aggregate.UNKNOWN_PATH
+        aggregate.UNKNOWN_PATH = os.path.join(d, "parse-unknown.md")
+        try:
+            _, _, 回, 物件 = aggregate.write_unresolved(
+                [self.消えた行("P-1", "2026-09"), self.消えた行("P-1", "2026-12")],
+                "2027-03-01")
+        finally:
+            aggregate.UNKNOWN_PATH = keep
+        self.assertEqual(回, 2, "消えた回の数が合わない")
+        self.assertEqual(物件, 1,
+                         "同じ物件の2つの回を、2物件と数えている")
+
+    def test_別の物件なら回も物件も同じ数(self):
+        d = tempfile.mkdtemp()
+        keep = aggregate.UNKNOWN_PATH
+        aggregate.UNKNOWN_PATH = os.path.join(d, "parse-unknown.md")
+        try:
+            _, _, 回, 物件 = aggregate.write_unresolved(
+                [self.消えた行("P-1", "2026-09"), self.消えた行("P-2", "2026-09")],
+                "2027-03-01")
+        finally:
+            aggregate.UNKNOWN_PATH = keep
+        self.assertEqual((回, 物件), (2, 2))
 
 
 if __name__ == "__main__":

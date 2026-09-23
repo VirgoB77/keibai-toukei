@@ -560,5 +560,62 @@ class robots_txtもバイトで残す(unittest.TestCase):
         self.assertIn("# 取得日:", 頭)
         self.assertIn("https://example.test/robots.txt", 頭)
 
+class 辿った数を数えて出す(unittest.TestCase):
+    """報告に「（辿った数: 0 本）」と **0 を直接書いていた**（2026-09-20）。
+
+    **数えていない 0 は、数えた 0 と見分けられない。**
+    実測: 辿るように変えても 0 のままだった。
+
+    ここは2つを分けて見る。
+    ① 辿る先を選ぶときに外した数が、ちゃんと増えるか
+    ② 辿る先の一覧に、3点セットが1本も残っていないか（本丸）
+    """
+
+    BASE = "https://example.test/list.html"
+
+    def 頁(self, *links):
+        return "".join('<a href="%s">%s</a>' % (h, lb) for h, lb in links)
+
+    def test_3点セットは辿る先に出てこない(self):
+        """**材料は、3点セットの壁だけが効くものでないといけない。**
+
+        ラベルが「物件明細書（3点セット）」だと、後ろの
+        `FOLLOW_TEXT`（売却・公売…）でも落ちる。それだと
+        3点セットの壁を外しても同じ結果になり、**見分けられない**。
+        実測（2026-09-20）: その材料で壁を外しても検査は黙ったままだった。
+
+        だから**辿る条件を全部満たす3点セットのリンク**を渡す。
+        壁が効いていれば出てこない。外せば出てくる。
+        """
+        # 「売却」「一覧」を含むので FOLLOW_TEXT / FOLLOW_TOPIC は通る。
+        # 止めているのは url の santen だけ
+        通る名 = "令和8年度 売却物件 一覧"
+        page = self.頁(("/santen/2026.html", 通る名),
+                       ("/r08/list.html", "令和8年度 公売物件一覧"))
+        先 = recon.follow_links(page, self.BASE)
+        self.assertTrue(先, "材料が1本も辿られない。これでは見分けられない")
+        for u, lb in 先:
+            self.assertFalse(
+                recon.is_santen_link(u, lb),
+                "**3点セットを辿る先に入れている**: %s（%s）" % (u, lb))
+
+    def test_外した数が増える(self):
+        前 = recon.SANTEN_SKIPPED[0]
+        recon.follow_links(self.頁(("/santen/a.html", "3点セット"),
+                                   ("/santen/b.html", "物件明細書 3点セット")),
+                           self.BASE)
+        self.assertGreater(recon.SANTEN_SKIPPED[0], 前,
+                           "外したのに数えていない。"
+                           "**数えていない0は、数えた0と見分けられない**")
+
+    def test_3点セットが無い日は増えない(self):
+        """**材料は、両方でないと見分けられない。**"""
+        前 = recon.SANTEN_SKIPPED[0]
+        recon.follow_links(self.頁(("/r08/list.html", "令和8年度 公売物件一覧")),
+                           self.BASE)
+        self.assertEqual(recon.SANTEN_SKIPPED[0], 前,
+                         "3点セットが1本も無いのに数が増えた")
+
+
 if __name__ == "__main__":
     unittest.main()

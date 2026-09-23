@@ -185,5 +185,58 @@ class 語を2か所に持たない(unittest.TestCase):
                       "make_cross が SOLD を写し持っている")
 
 
+class 紙の表が効いていないことを紙に書く(unittest.TestCase):
+    """**表に書いた数字が、実際の下限を決めていなかった**（2026-09-20）。
+
+    `common/kaihatsu_kibo.json` の `areas` は偵察レポートに表として出るが、
+    下限を決めているのは `default_sqm` と `city_overrides` だけ。
+    実測: 姫路市（播磨）は表では 1,000㎡ なのに、実際は 500㎡ で拾っている。
+    600㎡の土地が跡地に入る。
+
+    **一覧を推測で作らない。** かわりに、**効いていない行をそう名乗る。**
+    """
+
+    def test_表に無い市町村は既定値で拾う(self):
+        self.assertEqual(make_cross.min_sqm("28201"), make_cross.DEFAULT_SQM)
+
+    def test_表の広さは下限を動かさない(self):
+        import json
+        p = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "common", "kaihatsu_kibo.json")
+        with open(p, encoding="utf-8") as f:
+            d = json.load(f)
+        ちがう = [a for a in d["areas"] if a["sqm"] != d["default_sqm"]]
+        self.assertTrue(
+            ちがう,
+            "表の広さが全部 default_sqm と同じになった。"
+            "**それなら『効いていない』という名乗りは要らないので、"
+            "kibo.py の列ごと外すこと**（要らない名乗りを残さない）")
+        for a in ちがう:
+            self.assertEqual(
+                make_cross.min_sqm(""), d["default_sqm"],
+                "%s %s は表で %d㎡ なのに、コードは %d㎡ で拾っている。"
+                "効いていないなら、紙にそう書くこと"
+                % (a["pref"], a["範囲"], a["sqm"], make_cross.min_sqm("")))
+
+    def test_効いていない行が偵察レポートに名指しで出ている(self):
+        """**3段目。作り終えた紙を読む。**"""
+        import io as _io
+        import json
+        ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        p = os.path.join(ROOT, "data", "recon-report.md")
+        if not os.path.exists(p):
+            self.skipTest("偵察レポートがまだ無い")
+        with _io.open(p, encoding="utf-8") as f:
+            文 = f.read()
+        if "開発許可が要る土地の広さ" not in 文:
+            self.skipTest("その章がまだ無い")
+        with open(os.path.join(ROOT, "common", "kaihatsu_kibo.json"),
+                  encoding="utf-8") as f:
+            d = json.load(f)
+        n = sum(1 for a in d["areas"] if a["sqm"] != d["default_sqm"])
+        self.assertIn("表の広さと、いま効いている下限が違う範囲: %d 件" % n, 文,
+                      "効いていない範囲の数が紙に出ていない")
+
+
 if __name__ == "__main__":
     unittest.main()
