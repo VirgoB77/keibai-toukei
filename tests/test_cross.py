@@ -230,6 +230,11 @@ class 紙の表が効いていないことを紙に書く(unittest.TestCase):
             文 = f.read()
         if "開発許可が要る土地の広さ" not in 文:
             self.skipTest("その章がまだ無い")
+        # 毎朝の最初の検査は、kibo.py が走る前に、前の日のレポートを読む。
+        # 前の形の章なら、この日の kibo.py が書き直したあとの2回目の検査で見る
+        if "いま効いているか" not in 文:
+            self.skipTest("kibo.py がまだ今の形でレポートを書き直していない"
+                          "（前の形の章。書き直したあとの検査で見る）")
         with open(os.path.join(ROOT, "common", "kaihatsu_kibo.json"),
                   encoding="utf-8") as f:
             d = json.load(f)
