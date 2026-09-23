@@ -86,7 +86,7 @@ def _load():
 # 見張りが黙って空振りする。**一覧と比べる。**
 RETIRED_NAMES = (
     "ic-log",        # 2026-09-17 退役。publish.sh の宛先として書いてあった置き場
-    "keibai-data",   # 2026-09-18 退役。金庫は keibai-toukei-raw へ rename する
+    "keibai-data",   # 2026-09-18 退役。金庫は keibai-toukei-raw へ rename 済み
 )
 
 
