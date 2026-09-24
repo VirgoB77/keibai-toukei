@@ -506,7 +506,11 @@ class 取下げと繰り越しは別物(unittest.TestCase):
     """
 
     def 消えた(self, **kw):
-        row = 行(status=aggregate.GONE, gone_on="2026-10-01", **kw)
+        # `gone_kansoku`（完全観測どうしの比較で付けた記録）が無いと
+        # `aggregate.gone()` は「消えた」と数えない（spec/kanzen.md）。
+        # ここは「確定した消えた」を作る箱なので、必ず付けておく
+        row = 行(status=aggregate.GONE, gone_on="2026-10-01",
+                gone_kansoku=["2026-09-17", "2026-10-01"], **kw)
         return row
 
     def test_消えた物件は3つめの箱に入る(self):
@@ -541,7 +545,8 @@ class 取下げと繰り越しは別物(unittest.TestCase):
         「取下げ かつ 消えた」を非排他の実例として使っているのに、
         こちらは「重ならない」と名乗っていた。**指した先と逆。**
         """
-        r = 行(status="取下げ", gone_on="2026-09-18", open_date="2026-09-01")
+        r = 行(status="取下げ", gone_on="2026-09-18",
+              gone_kansoku=["2026-09-01", "2026-09-18"], open_date="2026-09-01")
         self.assertTrue(aggregate.gone(r))
         self.assertTrue(aggregate.undecided(r))
         self.assertEqual(aggregate.yukue(r, today="2026-09-19"), "取下げ",
@@ -590,6 +595,43 @@ class 取下げと繰り越しは別物(unittest.TestCase):
         self.assertIn('row["key"]', src)
 
 
+class 完全観測どうしの比較でだけ消えたと言う(unittest.TestCase):
+    """spec/kanzen.md「消えた」は、直前の完全観測と今回の完全観測の比較だけで付ける。
+
+    `gone_on` だけでは足りない。`parse.merge_snapshot()` が完全観測どうしを
+    比べて付けた記録（`gone_kansoku`）が無い行は、**未判定**として扱う。
+    前（門のつなぎ込みより前）の書き方で `gone_on` だけ付いた行が残っていても、
+    ここで「消えた」と名乗らせない。
+    """
+
+    def test_gone_kansoku無しはgoneにならない(self):
+        row = 行(status=aggregate.GONE, gone_on="2026-10-01")
+        self.assertNotIn("gone_kansoku", row)
+        self.assertFalse(aggregate.gone(row),
+                         "gone_kansoku が無いのに消えたと数えている")
+
+    def test_gone_kansoku無しはyukueが消えたにならない(self):
+        row = 行(status="", open_date="2026-09-01", gone_on="2026-10-01")
+        self.assertNotEqual(aggregate.yukue(row, today="2026-10-20"), "消えた")
+
+    def test_gone_kansokuがあればgoneになる(self):
+        row = 行(status=aggregate.GONE, gone_on="2026-10-01",
+                gone_kansoku=["2026-09-17", "2026-10-01"])
+        self.assertTrue(aggregate.gone(row))
+        self.assertEqual(aggregate.yukue(row, today="2026-10-20"), "消えた")
+
+    def test_gone_kansoku無しは食い違いにも数えない(self):
+        """`yukue_conflicts()` も同じ規則。未判定の行を食い違いとして鳴らさない。"""
+        row = 行(status="売却", open_date="2026-10-01", gone_on="2026-09-18")
+        self.assertEqual(aggregate.yukue_conflicts(row), [])
+
+    def test_not_countedもgone_kansoku無しは数えない(self):
+        import make_index
+        rows = [行(status="", open_date="2026-09-01", gone_on="2026-10-01")]
+        got = make_index.not_counted(rows, today="2026-10-20")
+        self.assertEqual(got["gone"], 0)
+
+
 class 足したときに数が合うこと(unittest.TestCase):
     """正本 6節（2026-09-19）。**合わなければ黙って落としている。**
 
@@ -609,7 +651,8 @@ class 足したときに数が合うこと(unittest.TestCase):
         rows = [行(status="売却", open_date="2026-10-01"),
                 行(status="不売", open_date="2026-10-01"),
                 行(status="取下げ"),
-                行(status="", gone_on="2026-09-18"),
+                行(status="", gone_on="2026-09-18",
+                  gone_kansoku=["2026-09-01", "2026-09-18"]),
                 行(status="", open_date="2099-01-01"),
                 行(status="よく分からない語", open_date="2026-10-01")]
         got = [aggregate.yukue(r, today="2026-10-20") for r in rows]
@@ -772,7 +815,8 @@ class 足したときに数が合うこと(unittest.TestCase):
 
         消えたあとに結果が出ることはない。どちらかの読みが間違っている。
         """
-        r = 行(status="売却", open_date="2026-10-01", gone_on="2026-09-18")
+        r = 行(status="売却", open_date="2026-10-01", gone_on="2026-09-18",
+              gone_kansoku=["2026-09-01", "2026-09-18"])
         self.assertTrue(aggregate.yukue_conflicts(r))
         self.assertEqual(aggregate.kazu_ga_au([r])["食い違う合図"], 1)
 
@@ -991,7 +1035,7 @@ class not_countedが非0になる道(unittest.TestCase):
         import make_index
         rows = [行(status="取下げ", first_seen="2026-09-01"),
                 行(status="", first_seen="2026-09-01", gone_on="2026-09-18",
-                  case_no="別"),
+                  gone_kansoku=["2026-09-01", "2026-09-18"], case_no="別"),
                 行(status="よく分からない語", first_seen="2026-09-01",
                   open_date="2026-09-01", case_no="別2"),
                 行(status="", first_seen="2026-09-01",
@@ -1130,6 +1174,7 @@ class 回と物件を取り違えない(unittest.TestCase):
     def 消えた行(self, key, ym):
         return 行(key="%s:%s" % (key, ym), property_key=key,
                   open_date="%s-24" % ym, gone_on="%s-25" % ym,
+                  gone_kansoku=["%s-01" % ym, "%s-25" % ym],
                   first_seen="%s-01" % ym, status="")
 
     def test_同じ物件の2つの回は回2で物件1(self):

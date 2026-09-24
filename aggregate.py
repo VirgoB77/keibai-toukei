@@ -304,8 +304,14 @@ def gone(row):
     **開札日が来ているかは見ない。** 取下げのいちばん多い形は
     「公告に出たあと、開札日より前に消える」。開札日で切ると、
     その形が丸ごと見えなくなる（2026-09-19 に実際そうなっていた）。
+
+    **`gone_on` があるだけでは「消えた」と名乗らない。** 完全観測どうしの
+    比較で付けたと言える行（`gone_kansoku` が付いている行）だけを消えたとする
+    （spec/kanzen.md「消えた」は、直前の完全観測と今回の完全観測の比較だけで付ける）。
+    前からある `gone_on`（比較の記録=`gone_kansoku` を持たない）は、
+    未判定として扱う。`status` が `GONE` でも同じ。
     """
-    return bool(row.get("gone_on"))
+    return bool(row.get("gone_on") and row.get("gone_kansoku"))
 
 
 def undecided(row):
@@ -512,11 +518,14 @@ def yukue_conflicts(row, today=None):
         開札日より前に一覧から消えたのに、結果が出ている
 
     消えたあとに結果が出ることはない。どちらかの読みが間違っている。
+
+    **ここも `gone()` と同じく、`gone_kansoku`（完全観測どうしの比較）が
+    無い `gone_on` は見ない。** 未判定の行を「食い違っている」と鳴らさない。
     """
     status = row.get("status") or ""
     gone_on = row.get("gone_on") or ""
     day = row.get("open_date") or ""
-    if not (gone_on and day and gone_on < day):
+    if not (gone_on and row.get("gone_kansoku") and day and gone_on < day):
         return []
     if status in SOLD or status in UNSOLD:
         return ["開札日(%s)より前に消えた(%s)のに、結果が出ている(%s)"

@@ -34,6 +34,7 @@ from datetime import date  # noqa: E402
 
 import aggregate  # noqa: E402  段階の語彙は aggregate が持つ
 import recon  # noqa: E402  文字コードの判定を借りる
+from common import kanzen  # noqa: E402  完全観測の印は共通の物差しで持つ
 from common import privacy  # noqa: E402
 from common import report  # noqa: E402
 from common.jst import today as jst_today  # noqa: E402
@@ -1165,13 +1166,139 @@ def write_uragaeri(裏返り):
     print("決めた値は動かしていない。どちらを採るかは人が決める")
 
 
-def merge_snapshot(merged, rows, day):
+# ---------------------------------------------------------------- 完全観測の印
+#
+# 完全観測かどうかを、生データが在ることや HTTP 200 から推し量らない
+# （common/kanzen.py）。取得段（ここ）が、確かめたことだけを印にする。
+# この置き場が必要とする印は5つ（spec/kanzen_keibai.md 2）。
+KANZEN_HITSUYOU = ("入口に届いた", "必要本文を受け取った",
+                   "ページ送りを最後まで受け取った", "解析できた",
+                   "private保存成功")
+
+# 取得方式・観測元は、この置き場では固定（人が保存した一覧を、裁判所ごとに読む）。
+# 観測元は「物件が載っているページ」ではなく、行データの `source_url` と
+# 同じ式（BIT_SCHEDULE_URL % 裁判所）にそろえる。実物のURLと違っても、
+# 観測の同一性を見分ける識別子として使う（spec/kanzen_keibai.md 2）
+KANZEN_HOUSHIKI = "人が保存した一覧"
+
+# ページ送り（BITのpager）の中の、いまのページ番号の1つ。
+# 選べる（=まだ行っていない）ページ番号には onclick="getData(N)" が付き、
+# いまのページ番号だけ付かない（実物の保存ページで確認。押す先が無いので）。
+_PAGE_GENZAI = re.compile(
+    r'<div class="page-item disabled">\s*'
+    r'<a class="page-link" href="[^"]*">(\d+)</a>')
+# 「末尾」（aria-label="last"）の onclick の番号が、そのまま最後のページ番号になる
+_PAGE_SAIGO = re.compile(r'onclick="getData\((\d+)\);"[^>]*aria-label="last"')
+
+
+def pager_info(text):
+    """保存した1枚のページから、「今のページ番号」と「最後のページ番号」を読む。
+
+    読めなければ None（分からない）。**同じページに pager が2つ（上と下）
+    出ることがあるが、同じ値のはず。値が食い違ったら確かめられなかった扱いにする**
+    （確かめられなかった側に倒す。推し量って片方を採らない）。
+    """
+    genzai = set(int(m.group(1)) for m in _PAGE_GENZAI.finditer(text or ""))
+    saigo = set(int(m.group(1)) for m in _PAGE_SAIGO.finditer(text or ""))
+    if len(genzai) != 1 or len(saigo) != 1:
+        return None
+    return next(iter(genzai)), next(iter(saigo))
+
+
+def kansoku_kihon_shirushi(texts):
+    """入口に届いた・必要本文を受け取った・ページ送りを最後まで受け取った の3つ。
+
+    texts は、その(裁判所, 日)に置かれた全ページの中身（読めなかった分は None）。
+    """
+    if not texts or any(t is None for t in texts):
+        return {"入口に届いた": kanzen.IIE,
+                "必要本文を受け取った": kanzen.WAKARANAI,
+                "ページ送りを最後まで受け取った": kanzen.WAKARANAI}
+    honbun = (kanzen.HAI if all(t.rstrip().lower().endswith("</html>") for t in texts)
+             else kanzen.IIE)
+    yomi = [pager_info(t) for t in texts]
+    if any(y is None for y in yomi):
+        pager = kanzen.WAKARANAI
+    else:
+        saigo_atsumari = {y[1] for y in yomi}
+        if len(saigo_atsumari) != 1:
+            pager = kanzen.WAKARANAI          # ページによって最後の番号が食い違う
+        else:
+            saigo = next(iter(saigo_atsumari))
+            genzai_atsumari = {y[0] for y in yomi}
+            pager = (kanzen.HAI if genzai_atsumari == set(range(1, saigo + 1))
+                     else kanzen.IIE)
+    return {"入口に届いた": kanzen.HAI, "必要本文を受け取った": honbun,
+           "ページ送りを最後まで受け取った": pager}
+
+
+def kansoku_kaiseki_shirushi(text_for_diag, rows, mae_kensu, mae_kagi, ima_kagi):
+    """解析できた の印。
+
+    0件のとき・半分以上が一度に消えたときは、消えた／読めなかったと決めつけず
+    「分からない」へ倒す（`kanzen.zero_gyou` `kanzen.kyugen`。spec/kanzen.md）。
+    戻り値は (印, 読めなかった理由。読めていれば空文字)。
+    """
+    if not rows:
+        why = diagnose_list(text_for_diag, rows)
+        base = kanzen.zero_gyou(mae_kensu, 0, False)
+        return (base, why) if base == kanzen.WAKARANAI else (kanzen.IIE, why)
+    if kanzen.kyugen(mae_kagi, ima_kagi):
+        return kanzen.WAKARANAI, ""
+    return kanzen.HAI, ""
+
+
+def kansoku_hozon_shirushi(paths, env=None):
+    """private保存成功 の印。ファイルの実体（realpath）が金庫（KINKO_DIR）の中か。"""
+    env = os.environ if env is None else env
+    d = env.get("KINKO_DIR") or ""
+    if not d or not os.path.isdir(d):
+        return kanzen.WAKARANAI            # 金庫の場所が渡されていない
+    kinko = os.path.realpath(d)
+    for p in paths:
+        real = os.path.realpath(p)
+        if real != kinko and not real.startswith(kinko + os.sep):
+            return kanzen.IIE
+    return kanzen.HAI
+
+
+def kansoku_kaku(cid, day, file_names, shirushi, kanzen_flag, riyuu):
+    """その(裁判所, 日)の観測の印を、置いたページの隣（金庫の中）に小さなJSONで書く。"""
+    out_dir = os.path.join(INBOX_DIR, "keibai", cid)
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, "%s-kanzen.json" % day)
+    body = {
+        "対象": "keibai:%s" % cid,
+        "裁判所": cid,
+        "日": day,
+        "印": shirushi,
+        "完全観測": kanzen_flag,
+        "理由": riyuu,
+        "取得方式": KANZEN_HOUSHIKI,
+        "観測元": BIT_SCHEDULE_URL % cid,
+        "ファイル": sorted(file_names),
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(body, f, ensure_ascii=False, indent=1, sort_keys=True)
+        f.write("\n")
+    return path
+
+
+def merge_snapshot(merged, rows, day, kanzen_flag=None, mae_kanzen_hi=None):
     """その日の一覧を、いままでの行データに重ねる。
 
     一覧は上書きされる。だから「その日に見えたもの」を毎回重ねて、
     **いつ初めて出たか（first_seen）**と**いつまで見えていたか（last_seen）**を作る。
     first_seen が無いと、その月に新しく出た件数（フロー）が数えられず、
     いま出ている件数（ストック）しか出せない。それだと同じ物件を翌月また数えてしまう。
+
+    kanzen_flag … 今回の(裁判所, 日)観測が完全観測かどうか（True/False/None）。
+                  True のときだけ、見えた行の `kakunin_saigo`（完全観測の日のうち、
+                  見えた最後の日）をこの日に進める。**不完全な回は進めない**
+                  （spec/kanzen.md「不完全な回は、消失判定の時点を進めない」）。
+    mae_kanzen_hi … 直前の完全観測の日。呼ぶ側が
+                    `kanzen.sabun_dashite_yoi()` で「出してよい」と決めたときだけ渡す。
+                    無ければ None（＝この重ねでは「消えた」を1件も付けない）。
     """
     for r in rows:
         old = merged.get(r["key"])
@@ -1195,17 +1322,29 @@ def merge_snapshot(merged, rows, day):
             前 = old.get("saishutsu", old.get("re_notice"))
             if 前 is not None:
                 r["saishutsu"] = 前
+            r["kakunin_saigo"] = old.get("kakunin_saigo")
+        if kanzen_flag:
+            r["kakunin_saigo"] = day
         r["last_seen"] = day
         merged[r["key"]] = r
 
-    # その日の一覧に出てこなかったものは、消えた（開札が済んだか取下げ）
+    # その日の一覧に出てこなかった行。**「消えた」を付けるのは、今回が完全観測で、
+    # 直前の完全観測でも見えていた（kakunin_saigo が直前の完全観測の日と同じ）ときだけ**
+    # （spec/kanzen_keibai.md 3）。それ以外は何もしない。あとで完全観測がそろったときに
+    # 決める（不完全な回のうちに「消えた」と言わない。止まる側に倒す）
+    if not (kanzen_flag and mae_kanzen_hi):
+        return merged
     today_keys = {r["key"] for r in rows}
     for key, old in merged.items():
         if key in today_keys:
             continue
-        if old.get("last_seen", "") < day and not old.get("gone_on"):
-            old["gone_on"] = day
-            old.setdefault("status", aggregate.GONE)
+        if old.get("last_seen", "") >= day or old.get("gone_on"):
+            continue
+        if old.get("kakunin_saigo") != mae_kanzen_hi:
+            continue                         # 直前の完全観測で見えていたとは言えない
+        old["gone_on"] = day
+        old["gone_kansoku"] = [mae_kanzen_hi, day]
+        old.setdefault("status", aggregate.GONE)
     return merged
 
 
@@ -1282,11 +1421,25 @@ def main():
     paths = sorted(set(paths))
 
     merged = {c: load_rows(c) for c, _n in court_list}
+    known_courts = {c for c, _n in court_list}
+
+    # 1st pass … ファイルごとに読み、行データと、寄せる先の裁判所・日付を決める。
+    # **一覧は1ページに収まらないことがある**（大阪地裁本庁は41件で2ページになった）。
+    # 2枚目以降は「(裁判所, 日付)」が同じなので、ここではまだ重ねない
+    per_file = []             # [(path, day, text_or_None, rows, court_id_or_None)]
     for path in paths:
         rel = os.path.relpath(path, HERE).replace(os.sep, "/")
         # フォルダ名からの当て推量は、中身で決まらなかったときの控えにだけ使う
         folder = os.path.basename(os.path.dirname(path))
-        text = read_page(path)
+        try:
+            text = read_page(path)
+        except OSError:
+            troubles[rel] = "ファイルが読めませんでした（保存し直してください）"
+            fname_day = os.path.basename(path)[:10]
+            day = fname_day if re.fullmatch(r"\d{4}-\d{2}-\d{2}", fname_day) else None
+            per_file.append((path, day, None, [],
+                             folder if folder in known_courts else None))
+            continue
         # 日付はページ自身から読む。ファイル名は控えにしか使わない
         day = page_date(text, os.path.basename(path)[:10])
         got, unk = parse_bit_list(text, folder,
@@ -1296,6 +1449,8 @@ def main():
         if not got:
             # 読めなかった理由を控えて、催促の紙に出す。黙って捨てない
             troubles[rel] = diagnose_list(text, got)
+            per_file.append((path, day, text, [],
+                             folder if folder in known_courts else None))
             continue
         ingested.append(rel)
         any_card = True
@@ -1311,8 +1466,65 @@ def main():
                                       r.get("open_date") or "回不明")
                 r["source_url"] = BIT_SCHEDULE_URL % cid
             groups.setdefault(cid, []).append(r)
+        # 1枚のページが複数の裁判所にまたがることは、ふつう無い。
+        # ページそのものの出来（本文がそろっているか等）は、寄せた先どの裁判所にも同じく効く
         for cid, rows in groups.items():
-            merge_snapshot(merged.setdefault(cid, {}), rows, day)
+            per_file.append((path, day, text, rows, cid))
+
+    # 2nd pass … (裁判所, 日付) ごとにページをまとめ、古い日から重ねる
+    by_court_day = {}
+    for path, day, text, rows, cid in per_file:
+        if cid is None or day is None:
+            continue
+        by_court_day.setdefault((cid, day), []).append((path, text, rows))
+
+    kanzen_kensa = []          # 報告用（(裁判所, 日, 完全観測, 理由)）
+    for cid in sorted({c for c, _d in by_court_day} | set(merged)):
+        m = merged.setdefault(cid, {})
+        hizuke = sorted({d for c, d in by_court_day if c == cid})
+        for day in hizuke:
+            pages = by_court_day[(cid, day)]
+            day_rows = []
+            for _p, _t, rws in pages:
+                day_rows += rws
+
+            # 直前の完全観測（このコートの、いま持っている行データから逆算する。
+            # `kakunin_saigo` は完全観測の日にだけ進むので、その最大値がそのまま
+            # 「直前の完全観測の日」になる）
+            mae_hi = max((v.get("kakunin_saigo") for v in m.values()
+                         if v.get("kakunin_saigo")), default=None)
+            mae_kagi = ({k for k, v in m.items() if v.get("kakunin_saigo") == mae_hi}
+                       if mae_hi else set())
+            ima_kagi = {r["key"] for r in day_rows}
+
+            shirushi = kansoku_kihon_shirushi([t for _p, t, _r in pages])
+            shirushi["private保存成功"] = kansoku_hozon_shirushi(
+                [p for p, _t, _r in pages])
+            # 読めなかった理由（診断文）は、ファイルごとに1st passで
+            # 既に `troubles` へ控えてある（day_rows が空なら、寄せた全ファイルが
+            # 空だったということ）。ここでは完全観測の印にだけ使う
+            kaiseki, _why = kansoku_kaiseki_shirushi(
+                "".join(t or "" for _p, t, _r in pages), day_rows,
+                len(mae_kagi), mae_kagi, ima_kagi)
+            shirushi["解析できた"] = kaiseki
+
+            kanzen_flag, riyuu = kanzen.kimeru(shirushi, KANZEN_HITSUYOU)
+            ima_kansoku = {"kanzen": kanzen_flag, "moto": BIT_SCHEDULE_URL % cid,
+                          "houshiki": KANZEN_HOUSHIKI}
+            mae_kansoku = ({"kanzen": True, "moto": BIT_SCHEDULE_URL % cid,
+                           "houshiki": KANZEN_HOUSHIKI} if mae_hi else None)
+            dashite_yoi, _ = kanzen.sabun_dashite_yoi(mae_kansoku, ima_kansoku)
+
+            merge_snapshot(m, day_rows, day, kanzen_flag=kanzen_flag,
+                           mae_kanzen_hi=mae_hi if dashite_yoi else None)
+            kansoku_kaku(cid, day, [os.path.basename(p) for p, _t, _r in pages],
+                        shirushi, kanzen_flag, riyuu)
+            kanzen_kensa.append((cid, day, kanzen_flag, riyuu))
+
+    if kanzen_kensa:
+        kanzen_su = sum(1 for _c, _d, k, _r in kanzen_kensa if k is True)
+        print("観測 %d 件のうち、完全観測は %d 件（印は inbox/keibai/<庁>/ に置いた）"
+             % (len(kanzen_kensa), kanzen_su))
 
     uragaeri = []
     for court_id in sorted(merged):
