@@ -11,6 +11,8 @@
 
     - 「未確認」「規約未確定」の取得元にも毎日取りに行っていた（15件）
     - robots.txt が 403・5xx・つながらない・読めない でも「取得は続ける」で通していた
+    - robots.txt が redirect されて、よその host やふつうの HTML（200）が返っても、
+      規則が1行も無いものとして読み「全部許可」になっていた
 
 ここでは recon_one() に取得元を1つずつ渡し、**本文を取りに行ったか**で見る。
 robots.txt への問い合わせは偽の応答で返し、本文の取得は差し替えて数える。
@@ -63,7 +65,10 @@ class 関所(unittest.TestCase):
                 raise urllib.error.HTTPError(req.full_url, v, "x", {}, None)
             if kind == "exc":
                 raise v
-            return 偽の応答(v)
+            if kind == "resp":        # (本文, Content-Type, redirect のあとの URL)
+                body, ctype, final = v
+                return 偽の応答(body, ctype=ctype, final=final)
+            return 偽の応答(v, final=req.full_url)
 
         def 本文(url):
             self.fetch_calls.append(url)
@@ -100,8 +105,8 @@ class 関所(unittest.TestCase):
                               {"bit_pdf": 0, "santen_links": 0})
         return res
 
-    def 取りに行った(self, res):
-        self.assertEqual(self.fetch_calls, ["https://example.invalid/a.html"])
+    def 取りに行った(self, res, url="https://example.invalid/a.html"):
+        self.assertEqual(self.fetch_calls, [url])
         self.assertNotIn("skipped", res)
 
     def 取りに行かなかった(self, res, msg):
@@ -112,14 +117,17 @@ class 関所(unittest.TestCase):
 class 偽の応答:
     status = 200
 
-    def __init__(self, v):
+    def __init__(self, v, ctype="text/plain", final=None):
         if isinstance(v, bytes):
             self._b = v
-            self.headers = {"Content-Type": "text/plain",
-                            "Content-Encoding": "gzip"}
+            self.headers = {"Content-Type": ctype, "Content-Encoding": "gzip"}
         else:
             self._b = v.encode("utf-8")
-            self.headers = {"Content-Type": "text/plain"}
+            self.headers = {"Content-Type": ctype}
+        self._final = final
+
+    def geturl(self):
+        return self._final
 
     def read(self, n=None):
         return self._b[:n] if n else self._b
@@ -229,6 +237,61 @@ class robotsの関所(関所):
             res = self.通す(robots=("body", ALLOW))
         self.取りに行かなかった(res, "parse 不能")
         self.assertEqual(res["skipped"], recon.ROBOTS_FUMEI)
+
+    def test_redirectの先がふつうのHTMLなら止まる(self):
+        """**robots.txt → redirect → ふつうの HTML（200）。**
+
+        規則が1行も無いものとして読むと「全部許可」になる。読めたとは言えない。
+        """
+        html = "<!DOCTYPE html>\n<html><head><title>トップ</title></head></html>"
+        res = self.通す(robots=("resp", (html, "text/html; charset=utf-8",
+                                         "https://example.invalid/index.html")))
+        self.取りに行かなかった(res, "redirect の先が HTML")
+        self.assertEqual(res["skipped"], recon.ROBOTS_FUMEI)
+        self.assertEqual(self.counts.get("robots不明"), 1)
+
+    def test_よそのhostへのredirectは止まる(self):
+        """中身が規則でも、**どの host の規則か曖昧**なら取らない。"""
+        for final in ("https://other.invalid/robots.txt",
+                      "https://www.example.invalid/robots.txt"):
+            self.fetch_calls = []
+            recon._ROBOTS_CACHE.clear()
+            res = self.通す(robots=("resp", (ALLOW, "text/plain", final)))
+            self.取りに行かなかった(res, final)
+            self.assertEqual(res["skipped"], recon.ROBOTS_FUMEI, final)
+
+    def test_robots_txtではない場所へのredirectは止まる(self):
+        for final in ("https://example.invalid/robots.txt.html",
+                      "https://example.invalid/error/404.txt"):
+            self.fetch_calls = []
+            recon._ROBOTS_CACHE.clear()
+            res = self.通す(robots=("resp", (ALLOW, "text/plain", final)))
+            self.取りに行かなかった(res, final)
+
+    def test_redirectされずにHTMLが返っても止まる(self):
+        html = "\n  <html><body>ようこそ</body></html>"
+        res = self.通す(robots=("resp", (
+            html, "text/plain", "https://example.invalid/robots.txt")))
+        self.取りに行かなかった(res, "200 で HTML")
+
+    def test_同じhostのhttpからhttpsへのredirectは読む(self):
+        """**締めすぎない。** 同じ host の /robots.txt なら、規則をそのまま当てる。"""
+        src = self.取得元(url="http://example.invalid/a.html")
+        res = self.通す(src, robots=("resp", (
+            ALLOW, "text/plain", "https://example.invalid/robots.txt")))
+        self.取りに行った(res, "http://example.invalid/a.html")
+        self.fetch_calls = []
+        recon._ROBOTS_CACHE.clear()
+        res = self.通す(src, robots=("resp", (
+            DISALLOW, "text/plain", "https://example.invalid/robots.txt")))
+        self.取りに行かなかった(res, "https に移った先の Disallow")
+        self.assertEqual(res["skipped"], recon.ROBOTS_KYOHI)
+
+    def test_見出しがtext_htmlでも中身が規則なら読む(self):
+        """**見出しではなく中身で見る。** 見出しだけで止めると締めすぎる。"""
+        res = self.通す(robots=("resp", (
+            ALLOW, "text/html", "https://example.invalid/robots.txt")))
+        self.取りに行った(res)
 
     def test_読めなかったことを許可に変えない(self):
         """check_robots() そのもの。**辿った先もここを通る。**"""

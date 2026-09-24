@@ -324,6 +324,30 @@ class BackOff(Exception):
 _ROBOTS_CACHE = {}
 
 
+def robots_no_basho(url, final):
+    """redirect されたあとも、**同じ host の /robots.txt** か。
+
+    host が変わると、どの host の規則なのか曖昧になる。**迷ったら止まる**
+    （RFC 9309 は host をまたぐ redirect も辿ってよいとしているが、ここではそこまで広げない）。
+    同じ host の http → https だけは、同じ場所として扱う。
+    """
+    a = urllib.parse.urlparse(url)
+    b = urllib.parse.urlparse(final or url)
+    return (b.scheme in ("http", "https")
+            and b.netloc.lower() == a.netloc.lower()
+            and b.path == "/robots.txt")
+
+
+def html_no_you(raw):
+    """robots.txt ではなく、ふつうの HTML が返ってきたか。
+
+    robots.txt は `<` で始まらない。**見出し（Content-Type）ではなく中身で見る。**
+    text/html で robots.txt を返すサーバーはあるので、中身が規則なら読む。
+    """
+    head = (raw or b"")[:2048].lstrip(b"\xef\xbb\xbf \t\r\n").lower()
+    return head.startswith(b"<") or b"<html" in head
+
+
 def _get_robots(scheme, host):
     """robots.txt を**1回だけ**取る。戻り値は (本文, 状態)。
 
@@ -357,6 +381,8 @@ def _get_robots(scheme, host):
             生 = r.read(20000)
             ctype = r.headers.get("Content-Type", "")
             cenc = r.headers.get("Content-Encoding", "")
+            # **どこから返ってきたかも持って帰る。** urllib は redirect を黙って辿る
+            最後 = r.geturl() if hasattr(r, "geturl") else url
             state = "ok"
     except urllib.error.HTTPError as e:
         state = "none" if e.code in (404, 410) else (
@@ -376,6 +402,10 @@ def _get_robots(scheme, host):
         # 圧縮されたまま返ってきたら、読めない。**拒否とは混ぜない**
         圧縮 = atsushuku(生, cenc)
         if 圧縮:
+            body, state = "", "unknown"
+        elif not robots_no_basho(url, 最後) or html_no_you(生):
+            # redirect の先がよその host・robots.txt ではない場所・ふつうの HTML。
+            # 規則が1行も無いものとして読むと「全部許可」になる。**読めたと言えない**
             body, state = "", "unknown"
         else:
             # 文字コードは入口のページと同じやり方で決める。
@@ -402,7 +432,9 @@ def check_robots(url):
         404 / 410            通す（robots.txt が無い。**規約の関所は別に要る**）
         429 / 503            BackOff（その日はそのサーバーへ行かない）
         それ以外              通さない。401・403・ほかの 4xx・5xx・
-                             つながらない・時間切れ・圧縮のまま・読み取れない
+                             つながらない・時間切れ・圧縮のまま・読み取れない・
+                             redirect の先がよその host か /robots.txt ではない・
+                             ふつうの HTML が返ってきた
 
     **読めなかったことを「許可」に変えない**（2026-09-24。前は
     「読めなかった（取得は続ける）」で通していた。迷ったら止まる）。
