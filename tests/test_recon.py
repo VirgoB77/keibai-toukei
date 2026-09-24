@@ -657,16 +657,18 @@ class 取得元の欄と題材の欄を分ける(unittest.TestCase):
         del s["torikata"]
         self.assertFalse(torikata.toru(s))
 
-    def test_取ってよい以外の3語でも取りに行く(self):
-        """**取得元の欄は、取得の可否そのものではない。**
+    def test_取ってよい以外の3語は取りに行かない(self):
+        """**取りに行くのは「取ってよい」だけ**（2026-09-24）。
 
-        「未確認」「規約未確定」は、**いま取りに行っていることを
-        止める語ではない**（robots は見ている）。止めるのは
-        「取ってはいけない」だけ。かわりに `kiwadoi()` で数えて出す。
+        前は「未確認」「規約未確定」を止める語ではないとして、取りに行っていた
+        （robots は見ている、という理由）。迷ったら止まる。未確認を許可扱いしない。
+        `kiwadoi()` は、関所が正しければいつも空になる。
         """
-        for g in ("未確認", "規約未確定"):
-            self.assertTrue(torikata.toru(self.もと(torikata=g)), g)
-            self.assertEqual(len(torikata.kiwadoi([self.もと(torikata=g)])), 1)
+        for g in ("未確認", "規約未確定", "取ってはいけない"):
+            self.assertFalse(torikata.toru(self.もと(torikata=g)), g)
+            self.assertIn(g, torikata.naze_toranai(self.もと(torikata=g)))
+            self.assertEqual(torikata.kiwadoi([self.もと(torikata=g)]), [], g)
+        self.assertTrue(torikata.toru(self.もと()))
         self.assertEqual(torikata.kiwadoi([self.もと()]), [])
 
     def test_取らない理由は1つの真偽にしない(self):
@@ -724,7 +726,17 @@ class 取得元の欄と題材の欄を分ける(unittest.TestCase):
             src = json.load(f)["sources"]
         d = torikata.daizai(src)
         self.assertEqual(sorted(d), ["keibai", "kobai", "kokuyu", "koyu"])
-        self.assertTrue(d["keibai"]["通れる"])
+        self.assertTrue(d["kobai"]["通れる"])
+        # **競売で通れるのは、いま規約のページだけ。** BIT の中身の取得元は
+        # どれも「規約未確定」（目的外使用の禁止に統計が当たるかは弁護士確認事項）で、
+        # 取りに行くのは「取ってよい」だけになったため（2026-09-24）
+        通る競売 = [s["id"] for s in src
+                 if s.get("system") == "keibai" and torikata.toru(s)]
+        self.assertEqual(
+            [i for i in 通る競売
+             if [s for s in src if s["id"] == i][0].get("kind") != "terms"], [],
+            "競売の中身の取得元に通れるものができたなら、その取得元の欄を"
+            "「取ってよい」にした根拠（torikata_riyuu）を確かめること")
         self.assertFalse(d["koyu"]["通れる"],
                          "公有財産に通れる取得元ができたなら、"
                          "姉妹サイト送りの取り決めを見直すこと")

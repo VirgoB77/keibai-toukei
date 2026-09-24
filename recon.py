@@ -388,8 +388,24 @@ def _get_robots(scheme, host):
     return _ROBOTS_CACHE[key]
 
 
+ROBOTS_KYOHI = "robots.txt で拒否されている"
+ROBOTS_FUMEI = "robots.txt が読めなかった（分からないときは取らない）"
+
+
 def check_robots(url):
-    """robots.txt で禁じられていないか確かめる。分からないときは通す。
+    """robots.txt で禁じられていないか確かめる。**分からないときは取らない。**
+
+    robots の関所はここ1か所（入口も、辿った先も、ここを通る）。
+
+        読めて Allow          通す
+        読めて Disallow       通さない
+        404 / 410            通す（robots.txt が無い。**規約の関所は別に要る**）
+        429 / 503            BackOff（その日はそのサーバーへ行かない）
+        それ以外              通さない。401・403・ほかの 4xx・5xx・
+                             つながらない・時間切れ・圧縮のまま・読み取れない
+
+    **読めなかったことを「許可」に変えない**（2026-09-24。前は
+    「読めなかった（取得は続ける）」で通していた。迷ったら止まる）。
 
     中身も一緒に返す。BIT の robots.txt に何が書いてあるかは
     DESIGN 13章の未確認事項なので、控えに残して人が読めるようにする。
@@ -404,13 +420,16 @@ def check_robots(url):
     if state == "none":
         return True, "robots.txt が無い", body
     if state != "ok":
-        return True, "robots.txt が読めなかった（取得は続ける）", body
+        return False, ROBOTS_FUMEI, body
 
-    rp = urllib.robotparser.RobotFileParser()
-    rp.set_url("%s://%s/robots.txt" % (p.scheme, p.netloc))
-    rp.parse(body.splitlines())      # 取り直さない。いま取った本文を読ませる
-    ok = rp.can_fetch(UA, url)
-    return ok, ("許可" if ok else "robots.txt で拒否されている"), body
+    try:
+        rp = urllib.robotparser.RobotFileParser()
+        rp.set_url("%s://%s/robots.txt" % (p.scheme, p.netloc))
+        rp.parse(body.splitlines())  # 取り直さない。いま取った本文を読ませる
+        ok = rp.can_fetch(UA, url)
+    except Exception:
+        return False, ROBOTS_FUMEI, body
+    return ok, ("許可" if ok else ROBOTS_KYOHI), body
 
 
 def fetch(url):
@@ -673,7 +692,9 @@ def recon_one(src, today, raw_dir, counts, blocked):
     res["robots"] = why
     if not ok:
         res["skipped"] = why
-        counts["拒否"] = counts.get("拒否", 0) + 1
+        # **「拒否された」と「読めなかった」を混ぜない。** どちらも取らないが、減らす手が違う
+        k = "拒否" if why == ROBOTS_KYOHI else "robots不明"
+        counts[k] = counts.get(k, 0) + 1
         return res
 
     try:
