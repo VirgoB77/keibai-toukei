@@ -895,7 +895,8 @@ Phase 4 で足すもの: 国有・公有の個票ページ（`kokuyu/<key>.html`
 6. 公売 5〜9本 → raw → parse → rows
 7. 国有財産 3〜4本、公有財産 6〜10本 → raw → parse → rows（新しい回のページがあればリンクを1段だけ辿る。2MB以下のPDFだけ取る）
 8. aggregate → build → publish（差分があるときだけ push）
-9. レポートを `GITHUB_STEP_SUMMARY` に出す。取れなかった収集先は太字。PDFを弾いた件数も出す
+9. 偵察レポートの本文は `data/recon-report.md` にだけ書く（公開しない）。取れなかった収集先は太字。PDFを弾いた件数も出す。
+   公開される Actions のログと `GITHUB_STEP_SUMMARY` には、決まった形の件数だけを出す（2026-09-24。`recon.py` の「公開ログ」）
 
 負荷の目安: 1日50〜60リクエスト、5秒間隔（正本 3.4）、数MB。3点セットを取らないので転送量は小さい。
 
