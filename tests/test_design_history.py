@@ -8,7 +8,8 @@ DESIGN.md から、過去の経緯だけの節を移した先。**履歴の文�
 
 - 冒頭に「履歴であり、今の仕様の根拠ではない」と書いてある
 - DESIGN.md の「DESIGN_HISTORY.md の『…』へ移した」の案内が、履歴に実在する見出しを指している
-- 案内のすぐ上の DESIGN.md の見出しも同じ名前（番号と見出しは DESIGN.md に残してある）
+  （節ごと移した「この項目の過去経緯は…」の形も、節の一部だけを移した「…は DESIGN_HISTORY.md の…」の形も）
+- 節ごと移した案内は、すぐ上の DESIGN.md の見出しも同じ名前（番号と見出しは DESIGN.md に残してある）
 - 本番のコード・workflow・README・sources.json などが、履歴ファイルを根拠として引いていない
   （DESIGN.md からの案内と、この tests は許す）
 
@@ -24,6 +25,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HIST = os.path.join(ROOT, "DESIGN_HISTORY.md")
 DESIGN = os.path.join(ROOT, "DESIGN.md")
 案内 = re.compile(r"この項目の過去経緯は DESIGN_HISTORY\.md の「(.+?)」へ移した。")
+# 履歴を指す案内の**全部**。節ごと移した形（上の `案内`）に加えて、
+# 節の一部だけを移した「4段で書いていたころの表は DESIGN_HISTORY.md の「…」へ移した。」も拾う
+# （2026-09-24）。前は `案内` だけを見ていたので、部分の案内の行き先が消えても鳴らなかった
+行き先 = re.compile(r"DESIGN_HISTORY\.md の「(.+?)」へ移した。")
 
 
 def 読む(path):
@@ -45,12 +50,22 @@ class 履歴ファイル(unittest.TestCase):
         self.assertIn("DESIGN.md", 頭)
 
     def test_案内が指す見出しが履歴にある(self):
-        先 = 案内.findall(読む(DESIGN))
+        """節ごとの案内も、節の一部だけの案内も、行き先の見出しが履歴に実在する。"""
+        先 = 行き先.findall(読む(DESIGN))
         self.assertTrue(先, "DESIGN.md に、履歴への案内が1つも無い")
         ある = set(見出しの名前(読む(HIST)))
         無い = [t for t in 先 if t not in ある]
         self.assertEqual(無い, [],
                          "DESIGN.md の案内が、履歴に無い見出しを指している")
+
+    def test_どちらの形の案内も拾う(self):
+        """**この見張り自身にも掛ける。** 拾う形を狭めた日に黙らないように。"""
+        self.assertEqual(
+            行き先.findall("この項目の過去経緯は DESIGN_HISTORY.md の「甲」へ移した。"),
+            ["甲"])
+        self.assertEqual(
+            行き先.findall("4段で書いていたころの表は DESIGN_HISTORY.md の「乙」へ移した。"),
+            ["乙"])
 
     def test_案内のすぐ上に同じ見出しが残っている(self):
         """**番号と見出しは DESIGN.md に残す。** 移したのは本文だけ。
