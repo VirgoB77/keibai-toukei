@@ -142,6 +142,12 @@ jobs:
           git clone --depth 1 \
             "git@github.com:${{ github.repository }}-raw.git" "${RAW_DIR}"
           echo "金庫を ${RAW_DIR} に出した"
+          # **つないだ直後（この成功の道だけ）に、門（common/kado.py）へ渡す。**
+          # 金庫が非公開であることは、この手前の段で確かめてある
+          # （確かめられなかった道はそこで exit 1 して、ここへは来ない）。
+          # 確かめられなかった道では書かない（正本「門のつなぎ込み」4節）
+          echo "KINKO_DIR=$(pwd)/${RAW_DIR}" >> "$GITHUB_ENV"
+          echo "KINKO_PRIVATE=1" >> "$GITHUB_ENV"
 
       # **Python は置き場の違いを知らない。** 今までのパスにつなぐ。
       # `inbox/` と `tests/fixtures/` も金庫に残してあるので、同じようにつなぐ
@@ -176,6 +182,16 @@ jobs:
       # `check.sh` が __pycache__ を消して、終了コードで見る
       - name: やってはいけないことの確認
         run: sh scripts/check.sh
+
+      # **相手台帳の正本は VirgoB77/ogataten-nippo。** ここ（ogataten-nippo
+      # 以外の置き場）は、取りに行く前に必ず読み直す（正本「門のつなぎ込み」4節）。
+      # 読めなかった日は、置いてある古い控えも使わない。**その回はどこへも取りに行かない**
+      # （読めたことにして進むほうが、遅れた台帳で取りに行くより危ない）
+      - name: 相手台帳を正本から読み直す
+        run: |
+          curl -fsS https://raw.githubusercontent.com/VirgoB77/ogataten-nippo/main/data/ref/aite-daicho.json -o data/ref/aite-daicho.json.new \
+            && mv data/ref/aite-daicho.json.new data/ref/aite-daicho.json \
+            || { rm -f data/ref/aite-daicho.json; echo "相手台帳を読めなかった。この回はどこへも取りに行かない"; }
 
       - name: 偵察する
         run: python3 recon.py ${{ github.event.inputs.only }}
@@ -269,6 +285,14 @@ jobs:
             [ -e "$f" ] || continue
             cp "$f" "data/$(basename "$f")"
             git add "data/$(basename "$f")"
+          done
+          # **門（common/kado.py）が書く控えは data/ref/ 直下の実ファイル**
+          # （data/ の symlink 先ではない）。今日の控え（相手ごとの
+          # 「もう見たか」）と機械札を、公開用の commit に含める。
+          # 含めないと、走るたびに書き換わった内容が commit されずに消え、
+          # 次の回が「まだ見ていない」から再び始まってしまう
+          for f in data/ref/aite-kyou.json data/ref/kikai-fuda.json; do
+            [ -e "$f" ] && git add "$f"
           done
           test -f robots.txt && git add robots.txt || true
           test -f sitemap.xml && git add sitemap.xml || true

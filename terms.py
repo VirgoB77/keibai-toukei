@@ -147,7 +147,7 @@ def main():
         lines.append("- URL: %s" % (src.get("url") or "（未確認）"))
         lines.append("- 取得元の欄: **%s**（%s）"
                      % (torikata.go(src) or "（書いていない）",
-                        src.get("torikata_riyuu") or "理由が書いていない"))
+                        torikata.riyuu(src) or "理由が書いていない"))
         止める = torikata.naze_toranai(src)
         if 止める:
             lines.append("- **まだ取っていない（%s）**" % 止める)

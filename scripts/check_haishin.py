@@ -37,7 +37,7 @@ import json
 import os
 import sys
 import urllib.error
-import urllib.request
+import urllib.request  # kado-soto: 自分のサイトの配信を確かめる（取得先ではない）
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
@@ -48,7 +48,7 @@ TIMEOUT = 30
 TRIES = 3
 
 
-class _追わない(urllib.request.HTTPRedirectHandler):
+class _追わない(urllib.request.HTTPRedirectHandler):  # kado-soto: 自分のサイトの配信を確かめる（取得先ではない）
     """301・302 を追わずに、そのまま持って帰る。"""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -57,8 +57,8 @@ class _追わない(urllib.request.HTTPRedirectHandler):
 
 def 取りに行く(url):
     """(HTTPの番号, 中身, Content-Type) を返す。つながらなければ (0, 理由, "")。"""
-    opener = urllib.request.build_opener(_追わない)
-    req = urllib.request.Request(url, headers={"User-Agent": site.user_agent()})
+    opener = urllib.request.build_opener(_追わない)  # kado-soto: 自分のサイトの配信を確かめる（取得先ではない）
+    req = urllib.request.Request(url, headers={"User-Agent": site.user_agent()})  # kado-soto: 自分のサイトの配信を確かめる（取得先ではない）
     最後 = ""
     for i in range(TRIES):
         try:

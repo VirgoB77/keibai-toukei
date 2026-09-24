@@ -45,15 +45,15 @@ import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
-import urllib.robotparser
 import warnings
 from html.parser import HTMLParser
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from common import kado  # noqa: E402  取得の門はここ1か所（門の無い通信は閉じる）
 from common import site  # noqa: E402  名乗りは1か所から配る
 from common import report  # noqa: E402
-from common import torikata  # noqa: E402  取得元の4語はここ1か所
+from common import torikata  # noqa: E402  取得元の4語（一覧・kiwadoi の表示に使う）
 from common.jst import today_str  # noqa: E402  日付は日本時間で決める
 from common.jst import today as jst_today  # noqa: E402
 
@@ -70,8 +70,8 @@ TIMEOUT = 40
 # この応答が返ったら、その回は中止する。押し込まない（正本 3.4）
 BACK_OFF = (429, 503)
 
-# robots.txt を読む urllib.robotparser はタイムアウトを指定できず、
-# 既定のままだと相手が黙ったときに永久に待つ。ソケット側で縛っておく。
+# 相手が黙ったときに永久に待たないよう、ソケット側でも縛っておく
+# （個々の urlopen に timeout= を渡し忘れても、ここが最後の網になる）。
 socket.setdefaulttimeout(TIMEOUT)
 
 # 段の呼び名（レポートの見出しに使う）
@@ -320,111 +320,6 @@ class BackOff(Exception):
     """相手が「いまは待って」と言っている。その回は中止する。"""
 
 
-# ホストごとに1回だけ取る。中身と、どういう結果だったかを覚えておく
-_ROBOTS_CACHE = {}
-
-
-def robots_no_basho(url, final):
-    """redirect されたあとも、**同じ host の /robots.txt** か。
-
-    host が変わると、どの host の規則なのか曖昧になる。**迷ったら止まる**
-    （RFC 9309 は host をまたぐ redirect も辿ってよいとしているが、ここではそこまで広げない）。
-    同じ host の http → https だけは、同じ場所として扱う。
-    """
-    a = urllib.parse.urlparse(url)
-    b = urllib.parse.urlparse(final or url)
-    return (b.scheme in ("http", "https")
-            and b.netloc.lower() == a.netloc.lower()
-            and b.path == "/robots.txt")
-
-
-def html_no_you(raw):
-    """robots.txt ではなく、ふつうの HTML が返ってきたか。
-
-    robots.txt は `<` で始まらない。**見出し（Content-Type）ではなく中身で見る。**
-    text/html で robots.txt を返すサーバーはあるので、中身が規則なら読む。
-    """
-    head = (raw or b"")[:2048].lstrip(b"\xef\xbb\xbf \t\r\n").lower()
-    return head.startswith(b"<") or b"<html" in head
-
-
-def _get_robots(scheme, host):
-    """robots.txt を**1回だけ**取る。戻り値は (本文, 状態)。
-
-    前は本文を取ったあとに RobotFileParser.read() を呼んでいた。あれは
-    **もう一度 robots.txt を取りに行く**。しかも名乗りは urllib の既定
-    （Python-urllib/3.x）になるので、1つの収集先につき
-    「名乗った1回」と「名乗らない1回」の2回、相手に当てていた。
-
-    状態は次の4つ。**「混んでいる」と「拒否された」を混ぜない。**
-      "ok"        本文が取れた
-      "none"      robots.txt が無い（404/410）。無いものは拒否ではない。
-                  **同じ host の /robots.txt で返った 404/410 だけ**（redirect の先がよそなら "unknown"）
-      "busy"      429/503。相手が「いまは待って」と言っている（正本 3.4）
-      "unknown"   それ以外の理由で読めなかった
-    """
-    key = "%s://%s" % (scheme, host)
-    if key in _ROBOTS_CACHE:
-        return _ROBOTS_CACHE[key]
-
-    url = key + "/robots.txt"
-    body, state = "", "unknown"
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": UA})
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-            # **バイトのまま受ける**（2026-09-19）。
-            # 前はここで `decode("utf-8", "replace")` していた。
-            # 役所のサーバーには Shift_JIS が残っているので、
-            # 日本語の注記が入った robots.txt は**その場で置換文字になり、
-            # そのまま保存されていた。** 戻せない。
-            # しかも Disallow の行は ASCII なので読み取りは通る。
-            # **壊れたことに、どこでも気づけない形だった。**
-            生 = r.read(20000)
-            ctype = r.headers.get("Content-Type", "")
-            cenc = r.headers.get("Content-Encoding", "")
-            # **どこから返ってきたかも持って帰る。** urllib は redirect を黙って辿る
-            最後 = r.geturl() if hasattr(r, "geturl") else url
-            state = "ok"
-    except urllib.error.HTTPError as e:
-        if e.code in (404, 410):
-            # **「無い」と言えるのは、対象の host 自身の /robots.txt が無いと確かめられたときだけ。**
-            # redirect でよその host や /robots.txt ではない場所へ行った先の 404 は、分からない。
-            # urllib は redirect の先で落ちると、その先の URL を持った HTTPError を出す
-            最後 = getattr(e, "url", None) or getattr(e, "filename", None) or url
-            state = "none" if robots_no_basho(url, 最後) else "unknown"
-        else:
-            state = "busy" if e.code in BACK_OFF else "unknown"
-    except Exception:
-        state = "unknown"
-
-    if state == "ok":
-        # **読む前にしまう。** 頭の2行は控えなので別ファイルにせず、
-        # バイトの手前に足す（robots.txt 自体は `#` が注記なので混ざらない）
-        d = os.path.join(HERE, "data", "raw", "_robots")
-        os.makedirs(d, exist_ok=True)
-        with open(os.path.join(d, host + ".txt"), "wb") as f:
-            f.write(("# 取得日: %s\n# %s\n"
-                     % (jst_today().isoformat(), url)).encode("utf-8"))
-            f.write(生)
-        # 圧縮されたまま返ってきたら、読めない。**拒否とは混ぜない**
-        圧縮 = atsushuku(生, cenc)
-        if 圧縮:
-            body, state = "", "unknown"
-        elif not robots_no_basho(url, 最後) or html_no_you(生):
-            # redirect の先がよその host・robots.txt ではない場所・ふつうの HTML。
-            # 規則が1行も無いものとして読むと「全部許可」になる。**読めたと言えない**
-            body, state = "", "unknown"
-        else:
-            # 文字コードは入口のページと同じやり方で決める。
-            # `decode("utf-8", "replace")` に直行しない
-            body, _ = to_text(生, ctype)
-    _ROBOTS_CACHE[key] = (body, state)
-    # 相手のサーバーに1本当てたので、次の1本まで間を空ける（正本 3.4）。
-    # robots.txt も相手のサーバーへのリクエスト。数に入れる
-    time.sleep(WAIT)
-    return _ROBOTS_CACHE[key]
-
-
 ROBOTS_KYOHI = "robots.txt で拒否されている"
 ROBOTS_FUMEI = "robots.txt が読めなかった（分からないときは取らない）"
 
@@ -432,45 +327,25 @@ ROBOTS_FUMEI = "robots.txt が読めなかった（分からないときは取�
 def check_robots(url):
     """robots.txt で禁じられていないか確かめる。**分からないときは取らない。**
 
-    robots の関所はここ1か所（入口も、辿った先も、ここを通る）。
+    robots.txt の取得・解釈・キャッシュ・404/410 の判定・redirect の扱いは、
+    ぜんぶ `common/kado.py` の `Kado.robots_kekka()` へ寄せた（門は1か所）。
+    ここは、その答え `(True/False/None, 理由)` を、
+    既存の呼び出し側（recon_one・辿る先）に合わせて `(ok, why, 本文)` の
+    形へ直すだけ。**セッションの中（`with K.sesshon(...):`）でだけ呼べる**
+    （門の外で呼ぶと `robots_kekka` が「カードの門を通っていない」を返す＝
+    読めなかった扱いになる）。
 
-        読めて Allow          通す
-        読めて Disallow       通さない
-        404 / 410            通す（robots.txt が無い。**規約の関所は別に要る**）。
-                             ただし同じ host の /robots.txt で返ったときだけ。
-                             redirect でよその host・ほかの場所へ行った先の 404 / 410 は通さない
-        429 / 503            BackOff（その日はそのサーバーへ行かない）
-        それ以外              通さない。401・403・ほかの 4xx・5xx・
-                             つながらない・時間切れ・圧縮のまま・読み取れない・
-                             redirect の先がよその host か /robots.txt ではない・
-                             ふつうの HTML が返ってきた
+    **None（確かめられなかった・混んでいる）を許可に変えない**
+    （2026-09-24 からの決まり。正本の共通指示書「門のつなぎ込み」）。
 
-    **読めなかったことを「許可」に変えない**（2026-09-24。前は
-    「読めなかった（取得は続ける）」で通していた。迷ったら止まる）。
-
-    中身も一緒に返す。BIT の robots.txt に何が書いてあるかは
-    DESIGN 13章の未確認事項なので、控えに残して人が読めるようにする。
+    本文はもう返らない（`common/kado.py` は robots.txt の生バイトを控えに
+    残さない。読む側もこれまで誰も本文を使っていなかった）。形だけ
+    合わせて空文字を返す。
     """
-    p = urllib.parse.urlparse(url)
-    body, state = _get_robots(p.scheme, p.netloc)
-
-    if state == "busy":
-        # **「拒否された」と書かない。** 混んでいるだけ。
-        # 押し込まずにその回は中止して、次回に回す（正本 3.4）
-        raise BackOff("robots.txt が混んでいて読めない（今日は打ち切る）")
-    if state == "none":
-        return True, "robots.txt が無い", body
-    if state != "ok":
-        return False, ROBOTS_FUMEI, body
-
-    try:
-        rp = urllib.robotparser.RobotFileParser()
-        rp.set_url("%s://%s/robots.txt" % (p.scheme, p.netloc))
-        rp.parse(body.splitlines())  # 取り直さない。いま取った本文を読ませる
-        ok = rp.can_fetch(UA, url)
-    except Exception:
-        return False, ROBOTS_FUMEI, body
-    return ok, ("許可" if ok else ROBOTS_KYOHI), body
+    ok, why = kado.genzai().robots_kekka(url)
+    if ok is None:
+        return False, why or ROBOTS_FUMEI, ""
+    return ok, why or ("許可" if ok else ROBOTS_KYOHI), ""
 
 
 def fetch(url):
@@ -693,12 +568,16 @@ def recon_one(src, today, raw_dir, counts, blocked):
         res["skipped"] = "%s送り（制度が別なので、ここでは扱わない）" % src["handoff"]
         res["handoff"] = src["handoff"]
         return res
-    # **取らない理由は1つの真偽にしない**（正本 9節「『その取得元が使えない』と『その題材が成立しない』を分ける」）。
-    # 4語のどれも非空文字列なので、`if not src.get("torikata")` だと
-    # 「取ってはいけない」にも取りに行く。判定は common/torikata.py 1か所に集める
-    止める = torikata.naze_toranai(src)
-    if 止める:
-        res["skipped"] = 止める
+    hozon_saki = os.path.join(raw_dir, src["id"])
+    K = kado.genzai()
+    # **通信の前に、カードの門を見る**（common/kado.py 1か所に集めた判定）。
+    # 前はここで torikata.naze_toranai(src) を見ていた（sources.json の4語欄）。
+    # いまはカード＋運営者承認から導いた正式状態が効く（common/torikata.py の
+    # docstring・common/kado.py の Kado.seishiki）。止める理由があれば、
+    # この収集先のためには1本も通信しない（robots.txt も）
+    門で止めた = K.card_mon(src["id"], hozon_saki=hozon_saki)
+    if 門で止めた:
+        res["skipped"] = "門で止めた：" + "／".join(門で止めた)
         return res
     if src.get("fetch_every") == "月2回" and jst_today().day not in (1, 15):
         # 中身がめったに変わらないものを毎日叩かない（正本 3.4）
@@ -719,161 +598,180 @@ def recon_one(src, today, raw_dir, counts, blocked):
         counts["打ち切り"] = counts.get("打ち切り", 0) + 1
         return res
 
+    # **通過したら、この収集先の通信を全部セッションの中で行う**
+    # （robots の確認・本体・辿る先・PDF まで）。`kado.Tomeru` で止まったら
+    # 「門で止めた」として扱い、次の取得先へ進む（通信は1本も出ていない）
     try:
-        ok, why, _ = check_robots(src["url"])
-    except BackOff as e:
-        # robots.txt すら読めないほど混んでいる。押し込まない（正本 3.4）
-        res["robots"] = str(e)
-        res["skipped"] = str(e)
-        res["back_off"] = True
-        if host:
-            _BUSY_HOSTS.add(host)
-        counts["打ち切り"] = counts.get("打ち切り", 0) + 1
-        return res
-    res["robots"] = why
-    if not ok:
-        res["skipped"] = why
-        # **「拒否された」と「読めなかった」を混ぜない。** どちらも取らないが、減らす手が違う
-        k = "拒否" if why == ROBOTS_KYOHI else "robots不明"
-        counts[k] = counts.get(k, 0) + 1
-        return res
-
-    try:
-        status, ctype, raw, cenc = fetch(src["url"])
-    except BackOff as e:
-        res["fetch_error"] = str(e)
-        res["back_off"] = True
-        # そのサーバーへは今日もう行かない。押し込まない（正本 3.4）
-        if host:
-            _BUSY_HOSTS.add(host)
-        counts["打ち切り"] = counts.get("打ち切り", 0) + 1
-        time.sleep(WAIT)
-        return res
-    except urllib.error.HTTPError as e:
-        res["fetch_error"] = "HTTP %s" % e.code
-        counts["失敗"] = counts.get("失敗", 0) + 1
-        time.sleep(WAIT)
-        return res
-    except Exception as e:
-        res["fetch_error"] = "%s: %s" % (type(e).__name__, e)
-        counts["失敗"] = counts.get("失敗", 0) + 1
-        time.sleep(WAIT)
-        return res
-
-    # BIT から PDF が返ってきたら中身を捨てる。保存もしない
-    if blocked_pdf(src["url"], ctype):
-        blocked["bit_pdf"] += 1
-        res["fetch_error"] = "BITからPDFが返ってきたので捨てた（3点セットは取らない）"
-        time.sleep(WAIT)
-        return res
-
-    # **読む前にしまう**（正本 3.5「取り直せないものが先」・2026-09-19）。
-    # 前は `analyze()` のあとに書いていた。その朝のページは取り直せないのに、
-    # **読み取りで例外が出たら1枚も残らない**形だった。
-    # 生のまま残す。これがアーカイブの最初の1枚になる（再公開はしない）
-    d = os.path.join(raw_dir, src["id"])
-    os.makedirs(d, exist_ok=True)
-    with open(os.path.join(d, "%s.html" % today), "wb") as f:
-        f.write(raw)
-
-    # **圧縮されたまま返ってきたら、文字にしない。**
-    # バイトは上で残してあるので、あとから戻せる。
-    # ここで `to_text()` に通すと全部が置換文字になり、
-    # 「読めた」顔で「わからない」が積み上がる
-    圧縮 = atsushuku(raw, cenc)
-    if 圧縮:
-        res.update(status=status, bytes=len(raw))
-        res["fetch_error"] = (
-            "圧縮されたまま返ってきた（%s）。"
-            "バイトは残したが、中身は読んでいない" % 圧縮)
-        counts["失敗"] = counts.get("失敗", 0) + 1
-        time.sleep(WAIT)
-        return res
-
-    text, enc = to_text(raw, ctype)
-    res.update(status=status, encoding=enc, bytes=len(raw))
-    res["analysis"] = analyze(text, src["url"], src)
-    counts[res["analysis"]["verdict"]] = \
-        counts.get(res["analysis"]["verdict"], 0) + 1
-    blocked["santen_links"] += res["analysis"]["santen_count"]
-
-    # 入口が目次だけのことが多い。表が無いページはその先を見に行く。
-    # BIT では follow_links が必ず空を返すので、ここは動かない。
-    if res["analysis"]["verdict"] == "わからない":
-        res["followed"] = []
-        known = {src["url"]}
-        queue = []
-
-        def enqueue(links, depth, limit):
-            """まだ見ていないものだけを、上限まで列に並べる。"""
-            fresh = [(u, lb) for u, lb in links if u not in known]
-            for u, lb in fresh[:limit]:
-                known.add(u)
-                queue.append((u, lb, depth))
-            return len(fresh)
-
-        n_found = enqueue(follow_links(text, src["url"]), 1, FOLLOW_MAX)
-        if n_found > FOLLOW_MAX:
-            res["follow_capped"] = (n_found, FOLLOW_MAX)
-
-        while queue and len(res["followed"]) < FOLLOW_BUDGET:
-            url2, label, depth = queue.pop(0)
-            # **辿った先にも robots.txt を当てる。**
-            # 目次のページが許可でも、その先が Disallow のことがある。
-            # ここを飛ばすと、断られている場所を実際に取りに行くことになる
+        with K.sesshon(src["id"], hozon_saki=hozon_saki):
             try:
-                ok2, why2, _ = check_robots(url2)
+                ok, why, _ = check_robots(src["url"])
             except BackOff as e:
-                res["followed"].append((label, None, depth, str(e)))
+                # robots.txt すら読めないほど混んでいる。押し込まない（正本 3.4）
+                res["robots"] = str(e)
+                res["skipped"] = str(e)
                 res["back_off"] = True
-                h2 = host_of(url2)
-                if h2:
-                    _BUSY_HOSTS.add(h2)
-                break
-            if not ok2:
-                res["followed"].append((label, None, depth, why2))
-                continue
-            time.sleep(WAIT)
+                if host:
+                    _BUSY_HOSTS.add(host)
+                counts["打ち切り"] = counts.get("打ち切り", 0) + 1
+                return res
+            res["robots"] = why
+            if not ok:
+                res["skipped"] = why
+                # **「拒否された」と「読めなかった」を混ぜない。** どちらも取らないが、減らす手が違う
+                k = "拒否" if why == ROBOTS_KYOHI else "robots不明"
+                counts[k] = counts.get(k, 0) + 1
+                return res
+
             try:
-                st2, ct2, raw2, ce2 = fetch(url2)
+                status, ctype, raw, cenc = fetch(src["url"])
+            except kado.Tomeru:
+                # **門で止めた。** urlopen() の中で url_mon() が止めたもの
+                # （URL範囲の外・robots が途中で変わった等）。下の
+                # `except Exception` に飲まれると「取得できなかった」に
+                # 化けるので、ここで先に受けて外側（with の外）へ渡す
+                raise
             except BackOff as e:
-                res["followed"].append((label, None, depth, str(e)))
+                res["fetch_error"] = str(e)
                 res["back_off"] = True
-                h2 = host_of(url2)
-                if h2:
-                    _BUSY_HOSTS.add(h2)
-                break          # この収集先はここで打ち切る
+                # そのサーバーへは今日もう行かない。押し込まない（正本 3.4）
+                if host:
+                    _BUSY_HOSTS.add(host)
+                counts["打ち切り"] = counts.get("打ち切り", 0) + 1
+                time.sleep(WAIT)
+                return res
+            except urllib.error.HTTPError as e:
+                res["fetch_error"] = "HTTP %s" % e.code
+                counts["失敗"] = counts.get("失敗", 0) + 1
+                time.sleep(WAIT)
+                return res
             except Exception as e:
-                res["followed"].append((label, None, depth, type(e).__name__))
-                continue
-            if blocked_pdf(url2, ct2):
+                res["fetch_error"] = "%s: %s" % (type(e).__name__, e)
+                counts["失敗"] = counts.get("失敗", 0) + 1
+                time.sleep(WAIT)
+                return res
+
+            # BIT から PDF が返ってきたら中身を捨てる。保存もしない
+            if blocked_pdf(src["url"], ctype):
                 blocked["bit_pdf"] += 1
-                res["followed"].append((label, None, depth, "BITのPDFを捨てた"))
-                continue
-            # 入口と同じ。**読む前にしまう。圧縮なら文字にしない**
-            with open(os.path.join(d, "%s--%s.html" % (today, slug_of(url2))),
-                      "wb") as f:
-                f.write(raw2)
-            圧縮2 = atsushuku(raw2, ce2)
-            if 圧縮2:
-                res["followed"].append(
-                    (label, None, depth,
-                     "圧縮されたまま返ってきた（%s）。読んでいない" % 圧縮2))
-                continue
-            t2, _ = to_text(raw2, ct2)
-            a2 = analyze(t2, url2, src)
-            res["followed"].append((label, a2, depth, None))
-            counts[a2["verdict"]] = counts.get(a2["verdict"], 0) + 1
-            blocked["santen_links"] += a2["santen_count"]
+                res["fetch_error"] = "BITからPDFが返ってきたので捨てた（3点セットは取らない）"
+                time.sleep(WAIT)
+                return res
 
-            if a2["verdict"] == "わからない" and depth < 2:
-                enqueue(follow_links(t2, url2), depth + 1, FOLLOW_MAX_2)
+            # **読む前にしまう**（正本 3.5「取り直せないものが先」・2026-09-19）。
+            # 前は `analyze()` のあとに書いていた。その朝のページは取り直せないのに、
+            # **読み取りで例外が出たら1枚も残らない**形だった。
+            # 生のまま残す。これがアーカイブの最初の1枚になる（再公開はしない）
+            d = os.path.join(raw_dir, src["id"])
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, "%s.html" % today), "wb") as f:
+                f.write(raw)
 
-        if len(res["followed"]) >= FOLLOW_BUDGET and queue:
-            res["budget_hit"] = (FOLLOW_BUDGET, len(queue))
+            # **圧縮されたまま返ってきたら、文字にしない。**
+            # バイトは上で残してあるので、あとから戻せる。
+            # ここで `to_text()` に通すと全部が置換文字になり、
+            # 「読めた」顔で「わからない」が積み上がる
+            圧縮 = atsushuku(raw, cenc)
+            if 圧縮:
+                res.update(status=status, bytes=len(raw))
+                res["fetch_error"] = (
+                    "圧縮されたまま返ってきた（%s）。"
+                    "バイトは残したが、中身は読んでいない" % 圧縮)
+                counts["失敗"] = counts.get("失敗", 0) + 1
+                time.sleep(WAIT)
+                return res
 
-    time.sleep(WAIT)
-    return res
+            text, enc = to_text(raw, ctype)
+            res.update(status=status, encoding=enc, bytes=len(raw))
+            res["analysis"] = analyze(text, src["url"], src)
+            counts[res["analysis"]["verdict"]] = \
+                counts.get(res["analysis"]["verdict"], 0) + 1
+            blocked["santen_links"] += res["analysis"]["santen_count"]
+
+            # 入口が目次だけのことが多い。表が無いページはその先を見に行く。
+            # BIT では follow_links が必ず空を返すので、ここは動かない。
+            if res["analysis"]["verdict"] == "わからない":
+                res["followed"] = []
+                known = {src["url"]}
+                queue = []
+
+                def enqueue(links, depth, limit):
+                    """まだ見ていないものだけを、上限まで列に並べる。"""
+                    fresh = [(u, lb) for u, lb in links if u not in known]
+                    for u, lb in fresh[:limit]:
+                        known.add(u)
+                        queue.append((u, lb, depth))
+                    return len(fresh)
+
+                n_found = enqueue(follow_links(text, src["url"]), 1, FOLLOW_MAX)
+                if n_found > FOLLOW_MAX:
+                    res["follow_capped"] = (n_found, FOLLOW_MAX)
+
+                while queue and len(res["followed"]) < FOLLOW_BUDGET:
+                    url2, label, depth = queue.pop(0)
+                    # **辿った先にも robots.txt を当てる。**
+                    # 目次のページが許可でも、その先が Disallow のことがある。
+                    # ここを飛ばすと、断られている場所を実際に取りに行くことになる
+                    try:
+                        ok2, why2, _ = check_robots(url2)
+                    except BackOff as e:
+                        res["followed"].append((label, None, depth, str(e)))
+                        res["back_off"] = True
+                        h2 = host_of(url2)
+                        if h2:
+                            _BUSY_HOSTS.add(h2)
+                        break
+                    if not ok2:
+                        res["followed"].append((label, None, depth, why2))
+                        continue
+                    time.sleep(WAIT)
+                    try:
+                        st2, ct2, raw2, ce2 = fetch(url2)
+                    except kado.Tomeru:
+                        # **門で止めた。** `except Exception` に飲ませない
+                        # （下の except で「取れなかった」に化けると、
+                        # 門で止めたことが report_one() から見えなくなる）
+                        raise
+                    except BackOff as e:
+                        res["followed"].append((label, None, depth, str(e)))
+                        res["back_off"] = True
+                        h2 = host_of(url2)
+                        if h2:
+                            _BUSY_HOSTS.add(h2)
+                        break          # この収集先はここで打ち切る
+                    except Exception as e:
+                        res["followed"].append((label, None, depth, type(e).__name__))
+                        continue
+                    if blocked_pdf(url2, ct2):
+                        blocked["bit_pdf"] += 1
+                        res["followed"].append((label, None, depth, "BITのPDFを捨てた"))
+                        continue
+                    # 入口と同じ。**読む前にしまう。圧縮なら文字にしない**
+                    with open(os.path.join(d, "%s--%s.html" % (today, slug_of(url2))),
+                              "wb") as f:
+                        f.write(raw2)
+                    圧縮2 = atsushuku(raw2, ce2)
+                    if 圧縮2:
+                        res["followed"].append(
+                            (label, None, depth,
+                             "圧縮されたまま返ってきた（%s）。読んでいない" % 圧縮2))
+                        continue
+                    t2, _ = to_text(raw2, ct2)
+                    a2 = analyze(t2, url2, src)
+                    res["followed"].append((label, a2, depth, None))
+                    counts[a2["verdict"]] = counts.get(a2["verdict"], 0) + 1
+                    blocked["santen_links"] += a2["santen_count"]
+
+                    if a2["verdict"] == "わからない" and depth < 2:
+                        enqueue(follow_links(t2, url2), depth + 1, FOLLOW_MAX_2)
+
+                if len(res["followed"]) >= FOLLOW_BUDGET and queue:
+                    res["budget_hit"] = (FOLLOW_BUDGET, len(queue))
+
+            time.sleep(WAIT)
+            return res
+    except kado.Tomeru as e:
+        res["skipped"] = "門で止めた：" + "／".join(e.riyuu)
+        return res
 
 
 # ---------------------------------------------------------------- 公開ログ
@@ -950,6 +848,13 @@ def write_crash(detail):
 
 
 def main():
+    # **実行の最初に1回だけ、門を開ける。** これを呼ぶまで、この行から先の
+    # urllib.request.urlopen() は（common/kado.py を import した時点で）1本も出ない
+    # 日付は common/jst.py（時計を見る1か所）から渡す。robots.txt の控えは金庫の中の
+    # data/raw/_robots/ にバイトのまま残す（その日に何と書いてあったかは取り直せない）
+    kado.hajimeru(HERE, "keibai-toukei", UA, today=today_str(),
+                  robots_hikae=os.path.join(HERE, "data", "raw", "_robots"))
+
     with open(os.path.join(HERE, "sources.json"), encoding="utf-8") as f:
         sources = json.load(f)["sources"]
 
@@ -1027,7 +932,7 @@ def main():
         for x in kiwa:
             lines.append("- `%s` … %s（%s）"
                          % (x["id"], torikata.go(x),
-                            x.get("torikata_riyuu") or "理由が書いていない"))
+                            torikata.riyuu(x) or "理由が書いていない"))
     lines.append("")
     # **「辿った数: 0 本」と直接書いていた。**
     # 数えていない 0 は、数えた 0 と見分けられない。実測（2026-09-20）:
