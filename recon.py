@@ -27,6 +27,9 @@ shutten（大店立地法ウォッチ）の recon.py を写して、競売と公
     - BIT から application/pdf が返ってきたら、中身を捨ててレポートに出す
   この2つは tests/test_recon.py で固定してある。壊したらテストが落ちる。
 
+レポートの本文は data/recon-report.md にだけ書く（公開しない）。
+公開される Actions のログと要約には、決まった形の数行だけを出す（下の「公開ログ」）。
+
 Python 3 の標準ライブラリだけで動く。GitHub Actions でそのまま動く。
 """
 
@@ -38,10 +41,12 @@ import re
 import socket
 import sys
 import time
+import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
 import urllib.robotparser
+import warnings
 from html.parser import HTMLParser
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -809,6 +814,79 @@ def recon_one(src, today, raw_dir, counts, blocked):
     return res
 
 
+# ---------------------------------------------------------------- 公開ログ
+#
+# **偵察レポートの本文は、ログにも Actions の要約にも出さない**（2026-09-24）。
+# 公開用 repo の Actions のログと要約は、誰でも読める。レポートは
+# 「このファイルは公開しない」と名乗っているのに、前は同じ本文を print し、
+# 要約（GITHUB_STEP_SUMMARY）にも書いていた。取得元のURL・保存した名前・
+# 伏せる前の内訳が、公開の画面にそのまま出ていた。
+#
+# **後から伏せ字にしない。そもそも流さない。** 書く先を2つに分ける。
+#
+#     write_report()  詳しいレポート → data/recon-report.md（金庫にしまう。公開しない）
+#     announce()      決まった形の数行 → 標準出力と要約（公開される）
+#
+# ログに出すのは、固定の文と、こちらの動きの件数だけ。取得元の名前もURLも出さない。
+# 止まったときも同じ。詳しいこと（traceback）はレポートに書き、ログには型の名前だけ。
+
+def report_path():
+    return os.path.join(HERE, "data", "recon-report.md")
+
+
+def write_report(text):
+    """詳しいレポートを書く。**ここだけが本文の行き先。**"""
+    os.makedirs(os.path.dirname(report_path()), exist_ok=True)
+    with open(report_path(), "w", encoding="utf-8") as f:
+        f.write(text)
+
+
+def announce(lines, summary=False):
+    """公開ログに出す。**決まった形の行だけを渡す。** 本文は渡さない。"""
+    for line in lines:
+        print(line, flush=True)
+    gh = os.environ.get("GITHUB_STEP_SUMMARY") if summary else None
+    if gh:
+        with open(gh, "a", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+
+
+def log_start(n):
+    return ["偵察を始める（取得元 %d 件）" % n]
+
+
+def log_end(seen, tried, failed):
+    return [
+        "偵察を終えた。詳しいレポートは data/recon-report.md に書いた"
+        "（公開しない。本文はログに出さない）",
+        "取得元 %d 件：取りに行った %d / 行かなかった %d / 取れなかった %d"
+        % (seen, tried, seen - tried, failed),
+    ]
+
+
+def log_crash(exc):
+    return ["偵察が途中で止まった（%s）。詳しいことは data/recon-report.md に書いた"
+            "（公開しない）" % type(exc).__name__]
+
+
+def write_crash(detail):
+    """止まったところを、公開しないレポートの章として残す。
+
+    今日のレポートがまだ書けていなければ、**「公開しない」の頭から作り直す。**
+    頭が無い記録は、翌朝の最初の検査（tests/test_public.py）で落ちる。
+    """
+    title = "競売統計 偵察レポート（%s）" % today_str()
+    try:
+        with open(report_path(), encoding="utf-8") as f:
+            head = f.read(len(title) + 10)
+    except OSError:
+        head = ""
+    if not head.startswith("# " + title):
+        write_report(report.not_public(title))
+    report.put_chapter(report_path(), "偵察が途中で止まった",
+                       "```\n%s\n```" % detail.rstrip("\n"))
+
+
 def main():
     with open(os.path.join(HERE, "sources.json"), encoding="utf-8") as f:
         sources = json.load(f)["sources"]
@@ -816,6 +894,7 @@ def main():
     only = sys.argv[1] if len(sys.argv) > 1 else None
     today = today_str()
     raw_dir = os.path.join(HERE, "data", "raw")
+    announce(log_start(sum(1 for s in sources if wanted(s, only))))
 
     head = [
         report.not_public("競売統計 偵察レポート（%s）" % today),
@@ -837,10 +916,16 @@ def main():
     blocked = {"bit_pdf": 0, "santen_links": 0}
     bodies = {}
 
+    seen = tried = failed = 0     # 公開ログに出すのは、この3つの数だけ
     for src in sources:
         if not wanted(src, only):
             continue
         res = recon_one(src, today, raw_dir, counts, blocked)
+        seen += 1
+        if "skipped" not in res:
+            tried += 1
+            if res.get("fetch_error"):
+                failed += 1
         bodies.setdefault(src.get("system", "その他"), []).append(
             report_one(src, res))
 
@@ -902,19 +987,36 @@ def main():
         lines.append("")
         lines.extend(bodies[system])
 
-    text = "\n".join(lines)
-    os.makedirs(os.path.join(HERE, "data"), exist_ok=True)
-    with open(os.path.join(HERE, "data", "recon-report.md"), "w",
-              encoding="utf-8") as f:
-        f.write(text)
-    print(text)
+    write_report("\n".join(lines))
+    # **本文は print しない。要約にも書かない**（上の「公開ログ」）
+    announce(log_end(seen, tried, failed), summary=True)
 
-    # GitHub Actions の画面にも出す
-    gh = os.environ.get("GITHUB_STEP_SUMMARY")
-    if gh:
-        with open(gh, "a", encoding="utf-8") as f:
-            f.write(text)
+
+def run():
+    """入口。終了コードを返す（ふつうは 0、止まったら 1）。
+
+    **止まっても、詳しいことは公開ログに出さない。** 何もしないと、
+    Python が traceback（例外の文・途中の値）を標準エラーにそのまま出す。
+    """
+    try:
+        main()
+    except Exception as e:
+        try:
+            with warnings.catch_warnings():
+                # common/report.py の put_chapter は、読んだファイルを閉じていない。
+                # 警告を出す設定で走らせると、ResourceWarning がファイルの場所ごと
+                # 標準エラーに出る（tests/test_recon_log.py で踏んだ）。
+                # 止まったときにログへ出すのは、決まった1行だけにする
+                warnings.simplefilter("ignore", ResourceWarning)
+                write_crash(traceback.format_exc())
+        except Exception:
+            # レポートにも書けなかった。**それでも詳しいことはログに出さない**
+            pass
+        for line in log_crash(e):
+            sys.stderr.write(line + "\n")
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(run())
