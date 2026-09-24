@@ -63,6 +63,9 @@ class 関所(unittest.TestCase):
             kind, v = self.robots
             if kind == "code":
                 raise urllib.error.HTTPError(req.full_url, v, "x", {}, None)
+            if kind == "code_at":     # (コード, redirect のあとの URL)。urllib と同じく、先の URL で落ちる
+                code, final = v
+                raise urllib.error.HTTPError(final, code, "x", {}, None)
             if kind == "exc":
                 raise v
             if kind == "resp":        # (本文, Content-Type, redirect のあとの URL)
@@ -286,6 +289,47 @@ class robotsの関所(関所):
             DISALLOW, "text/plain", "https://example.invalid/robots.txt")))
         self.取りに行かなかった(res, "https に移った先の Disallow")
         self.assertEqual(res["skipped"], recon.ROBOTS_KYOHI)
+
+    def test_redirectなしの404と410は今までどおり通る(self):
+        for code in (404, 410):
+            self.fetch_calls = []
+            recon._ROBOTS_CACHE.clear()
+            res = self.通す(robots=("code_at", (
+                code, "https://example.invalid/robots.txt")))
+            self.取りに行った(res)
+
+    def test_同じhostのhttpからhttpsの404はrobotsなしとして通る(self):
+        """**対象の host 自身の robots.txt が無いと確かめられた。**"""
+        src = self.取得元(url="http://example.invalid/a.html")
+        for code in (404, 410):
+            self.fetch_calls = []
+            recon._ROBOTS_CACHE.clear()
+            res = self.通す(src, robots=("code_at", (
+                code, "https://example.invalid/robots.txt")))
+            self.取りに行った(res, "http://example.invalid/a.html")
+
+    def test_よそのhostへredirectされた先の404は止まる(self):
+        """よその host に robots.txt が無いことは、対象の host の話ではない。"""
+        for code in (404, 410):
+            for final in ("https://other.invalid/robots.txt",
+                          "https://www.example.invalid/robots.txt"):
+                self.fetch_calls = []
+                recon._ROBOTS_CACHE.clear()
+                res = self.通す(robots=("code_at", (code, final)))
+                self.取りに行かなかった(res, "%d %s" % (code, final))
+                self.assertEqual(res["skipped"], recon.ROBOTS_FUMEI)
+                self.assertEqual(self.counts.get("robots不明"), 1)
+
+    def test_同じhostのほかの場所へredirectされた先の404は止まる(self):
+        """エラーのページが 404 を返しても、robots.txt が無いとは確かめられていない。"""
+        for code in (404, 410):
+            for final in ("https://example.invalid/error/404.html",
+                          "https://example.invalid/robots.txt/"):
+                self.fetch_calls = []
+                recon._ROBOTS_CACHE.clear()
+                res = self.通す(robots=("code_at", (code, final)))
+                self.取りに行かなかった(res, "%d %s" % (code, final))
+                self.assertEqual(res["skipped"], recon.ROBOTS_FUMEI)
 
     def test_見出しがtext_htmlでも中身が規則なら読む(self):
         """**見出しではなく中身で見る。** 見出しだけで止めると締めすぎる。"""
