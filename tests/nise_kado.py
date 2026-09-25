@@ -149,7 +149,9 @@ def daicho_of(cards, repo_name=REPO):
         for h in c.get("対象host") or []:
             if h not in aite[name]["host"]:
                 aite[name]["host"].append(h)
-    return {"aite": aite}
+    # 予約台帳（repo横断）は tests/test_kado.py の「予約台帳」で試す。ここでは要らないと書く
+    # （書かなければ、門は要る側に倒れて止まる）
+    return {"yoyaku": {"hitsuyou": False}, "aite": aite}
 
 
 class Kumitate:

@@ -65,12 +65,37 @@ jobs:
           # **浅いクローンにしない。** 作者欄の見張りが黙る（正本 7節）
           fetch-depth: 0
 
+      # 予約台帳（repo横断。同じ相手へ、同じ日本時間の日に、2つの置き場・2つの実行から行かない）。
+      # 門（common/kado.py）が、相手への最初の外部通信の直前に、ここへ予約を1つ書いて push する。
+      # **鍵が無い・出せないときは、ここで失敗して止まる**（予約できない回は、どこへも取りに行かない）
+      - name: 予約台帳の鍵があることの確認
+        env:
+          ARU: ${{ secrets.YOYAKU_DEPLOY_KEY != '' }}
+        run: |
+          [ "$ARU" = "true" ] || { echo "予約台帳の鍵（YOYAKU_DEPLOY_KEY）が無い。この回はどこへも取りに行かない"; exit 1; }
+
+      - name: 予約台帳を隣に出す
+        uses: actions/checkout@v4
+        with:
+          repository: VirgoB77/kujiraya-aite-yoyaku
+          ref: main
+          ssh-key: ${{ secrets.YOYAKU_DEPLOY_KEY }}
+          path: _yoyaku
+
+      - name: 予約台帳の場所を門に渡す
+        run: |
+          echo "YOYAKU_DIR=${GITHUB_WORKSPACE}/_yoyaku" >> "$GITHUB_ENV"
+          echo "YOYAKU_REPO=VirgoB77/kujiraya-aite-yoyaku" >> "$GITHUB_ENV"
+
       # **走った日を1回だけ決める。** 時計を見るのはここだけ。
       # 時刻ではなく**値**を1回に決めて、最後まで同じ値を使う（正本 3.5）
       - name: 走った日を決める
         run: |
-          RUN_DATE=$(date +%F)
+          # 予約台帳（common/kado.py）は、日付と開始時刻を**同じ1つの時刻**から見る（日本時間）
+          t=$(TZ=Asia/Tokyo date +%Y-%m-%dT%H:%M:%S+09:00)
+          RUN_DATE=${t%%T*}
           echo "RUN_DATE=${RUN_DATE}" >> "$GITHUB_ENV"
+          echo "RUN_HAJIME=${t}" >> "$GITHUB_ENV"
           echo "この実行は ${RUN_DATE}（日本時間）として記録する"
 
       # **名前による自己停止。** 名前が `-raw` で終わるなら、そこは金庫。
