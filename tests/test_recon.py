@@ -12,12 +12,16 @@ DESIGN 1章の決定事項のうち、コードで守れるものをここで縛
 import io
 import json
 import os
+import shutil
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import recon  # noqa: E402
+import nise_kado  # noqa: E402  検査の中だけの偽の門（tests/kinko.py と同じ、手伝いのモジュール）
+from common import kado  # noqa: E402
 from common import torikata  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -180,99 +184,50 @@ class sources_jsonの決まり(unittest.TestCase):
 class 取得の作法(unittest.TestCase):
     """正本 3.4「断られたら、そこで打ち切る。回り込まない」を固定する。
 
-    ここが緩むと、相手のサーバーに二重に当てたり、断られている場所を
-    取りに行ったりする。about ページで読者に約束していることでもある。
+    **2026-09-25 から**、robots.txt の取得・解釈・キャッシュ・404/410 の
+    判定・redirect の扱いは `common/kado.py`（`Kado.robots_kekka`）に
+    寄せた。その中身の検査は `tests/test_kado.py` が持つ（あちらは書き換えない
+    約束のファイル）。ここで見るのは、`recon.check_robots()` がそこへ
+    正しくつないでいるか（**wiring**）だけ。
     """
 
-    def setUp(self):
-        import shutil
-        import tempfile
-        import urllib.request
-        recon._ROBOTS_CACHE.clear()
-        # robots.txt の控えはリポジトリに書かせない。テストで data/raw を汚さない
-        tmp = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, tmp, True)
-        self.addCleanup(setattr, recon, "HERE", recon.HERE)
-        recon.HERE = tmp
-        self.calls = []
-        self.real = urllib.request.urlopen
-        self.addCleanup(setattr, urllib.request, "urlopen", self.real)
-        self.addCleanup(recon._ROBOTS_CACHE.clear)
-        # 待ち時間はテストでは飛ばす（作法そのものは別のテストで見る）
-        self.sleep = recon.time.sleep
-        recon.time.sleep = lambda _n: None
-        self.addCleanup(setattr, recon.time, "sleep", self.sleep)
+    def _K(self, robots_kekka):
+        """`robots_kekka(url)` だけを差し替えた偽の門を、いまの門として据える。"""
+        class 偽の門:
+            def __init__(self, f):
+                self._f = f
+                self.kita = []
 
-    def 応答(self, body="", code=None):
-        import urllib.error
-        import urllib.request
+            def robots_kekka(self, url):
+                self.kita.append(url)
+                return self._f(url)
 
-        class Fake:
-            status = 200
-            headers = {"Content-Type": "text/plain"}
+        k = 偽の門(robots_kekka)
+        keep = kado.genzai()
+        self.addCleanup(setattr, kado, "_KADO", keep)
+        kado._KADO = k
+        return k
 
-            def __init__(self, b):
-                self._b = b.encode("utf-8")
+    def test_Noneを許可に変えない(self):
+        """**「確かめられなかった」「混んでいる」を許可にしない**（2026-09-24 からの決まり）。"""
+        k = self._K(lambda url: (None, "確かめられなかった（検査用）"))
+        ok, why, body = recon.check_robots("https://example.invalid/a.html")
+        self.assertEqual(k.kita, ["https://example.invalid/a.html"])
+        self.assertFalse(ok, "None を許可に変えている")
+        self.assertEqual(why, "確かめられなかった（検査用）")
+        self.assertEqual(body, "")
 
-            def read(self, n=None):
-                return self._b[:n] if n else self._b
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                return False
-
-        def fake(req, timeout=None):
-            self.calls.append((getattr(req, "full_url", req),
-                               dict(getattr(req, "headers", {}))))
-            if code:
-                raise urllib.error.HTTPError(
-                    getattr(req, "full_url", ""), code, "x", {}, None)
-            return Fake(body)
-
-        urllib.request.urlopen = fake
-
-    def test_robots_txtを2度取りに行かない(self):
-        # 前は本文を取ったあと RobotFileParser.read() でもう1回取っていた
-        self.応答("User-agent: *\nAllow: /\n")
-        recon.check_robots("https://example.lg.jp/a.html")
-        self.assertEqual(len(self.calls), 1, self.calls)
-
-    def test_robots_txtにも名乗る(self):
-        self.応答("User-agent: *\nAllow: /\n")
-        recon.check_robots("https://example.lg.jp/a.html")
-        ua = [v for k, v in self.calls[0][1].items() if k.lower() == "user-agent"]
-        self.assertEqual(ua, [recon.UA])
-
-    def test_同じホストなら1回しか取らない(self):
-        self.応答("User-agent: *\nAllow: /\n")
-        recon.check_robots("https://example.lg.jp/a.html")
-        recon.check_robots("https://example.lg.jp/b.html")
-        self.assertEqual(len(self.calls), 1)
-
-    def test_Disallowは守る(self):
-        self.応答("User-agent: *\nDisallow: /himitsu/\n")
-        ok, why, _ = recon.check_robots("https://example.lg.jp/himitsu/x.html")
+    def test_Falseはそのまま通す(self):
+        self._K(lambda url: (False, "robots.txt で拒否されている"))
+        ok, why, _ = recon.check_robots("https://example.invalid/himitsu/x.html")
         self.assertFalse(ok)
-        self.assertIn("拒否", why)
-        ok2, _why2, _ = recon.check_robots("https://example.lg.jp/ok.html")
-        self.assertTrue(ok2)
+        self.assertEqual(why, recon.ROBOTS_KYOHI)
 
-    def test_混んでいるのを拒否と書かない(self):
-        # 429 / 503 は「いまは待って」。拒否ではない。押し込まず打ち切る
-        for code in (429, 503):
-            recon._ROBOTS_CACHE.clear()
-            self.calls = []
-            self.応答(code=code)
-            with self.assertRaises(recon.BackOff):
-                recon.check_robots("https://example.lg.jp/a.html")
-
-    def test_robots_txtが無いのは拒否ではない(self):
-        self.応答(code=404)
-        ok, why, _ = recon.check_robots("https://example.lg.jp/a.html")
+    def test_Trueはそのまま通す(self):
+        self._K(lambda url: (True, "許可（検査用）"))
+        ok, why, _ = recon.check_robots("https://example.invalid/ok.html")
         self.assertTrue(ok)
-        self.assertIn("無い", why)
+        self.assertEqual(why, "許可（検査用）")
 
     def test_辿った先にもrobotsを当てる(self):
         # 目次が許可でも、その先が Disallow のことがある
@@ -371,14 +326,17 @@ class 取りに行ったものを読む前にしまう(unittest.TestCase):
             def 落ちる(*a, **k):
                 raise ValueError("読み取りでわざと落とす")
             recon.analyze = 落ちる
-        # **取得元の欄が要る。** 無いと取りに行かない（きつい側）。
-        # ここを入れ忘れて、この検査3本が「1枚も残っていない」で鳴った
+        # id はカードを見に行く鍵になった。ここは「門は通った先」を見る検査
+        # （読み取り・保存の順番）なので、**検査の中だけの通す偽の門**を差し込む
+        # （正本の共通指示書 5節。門そのものの挙動はここでは試さない）
         src = {"id": "test-src", "url": "https://example.test/a",
-               "name": "試験", "system": "keibai", "torikata": "取ってよい"}
+               "name": "試験", "system": "keibai"}
         keep_robots = recon.check_robots
         recon.check_robots = lambda url: (True, "許可", "")
         keep_wait = recon.WAIT
         recon.WAIT = 0
+        keep_genzai = kado.genzai()
+        kado._KADO = nise_kado.ToosuMon()
         try:
             res, err = None, None
             try:
@@ -397,6 +355,7 @@ class 取りに行ったものを読む前にしまう(unittest.TestCase):
             recon.fetch, recon.analyze = keep_fetch, keep_analyze
             recon.check_robots = keep_robots
             recon.WAIT = keep_wait
+            kado._KADO = keep_genzai
 
     def test_読み取りで落ちてもバイトは残る(self):
         """**ここが本体。** 落ちる日に、その朝のページを失わない。"""
@@ -469,100 +428,14 @@ class 保存したものが壊れていないか(unittest.TestCase):
         self.assertEqual(見つけた, [], "置換文字が混ざっている")
 
 
-class robots_txtもバイトで残す(unittest.TestCase):
-    """**役所のサーバーには Shift_JIS が残っている**（2026-09-19）。
+# **robots_txtもバイトで残す（旧）は 2026-09-25 に削った。**
+# `_get_robots()` が保存していた robots.txt の生バイトの控え
+# （data/raw/_robots/<host>.txt）は、common/kado.py に寄せたときに
+# 移していない（あちらは robots.txt の本文を控えに残さない）。
+# **控えが1つ失われた。** 参謀へ：DESIGN 13章の「BIT の robots.txt に
+# 何が書いてあるか」を控えで見る用途があるなら、common/kado.py 側に
+# 同じ機能を足すかどうかを判断すること（ここでは決められない）。
 
-    前はここで `decode("utf-8", "replace")` してから保存していた。
-    日本語の注記が入った robots.txt は**その場で置換文字になり、
-    そのまま保存されていた。戻せない。**
-
-    しかも `Disallow` の行は ASCII なので読み取りは通る。
-    **壊れたことに、どこでも気づけない形だった。**
-
-    robots.txt は毎日取り直せるが、**その日に何と書いてあったか**の控えは
-    取り直せない。相手が書き換えたら、こちらの控えが唯一の記録になる。
-    """
-
-    def 取らせる(self, 生, ctype="text/plain", cenc=""):
-        import tempfile
-        import urllib.request
-
-        class _返す:
-            headers = {"Content-Type": ctype, "Content-Encoding": cenc}
-
-            def read(self, n=None):
-                return 生
-
-            def __enter__(self):
-                self.headers = type(self).返す見出し()
-                return self
-
-            def __exit__(self, *a):
-                return False
-
-            @staticmethod
-            def 返す見出し():
-                class H(dict):
-                    def get(self, k, d=""):
-                        return dict.get(self, k, d)
-                return H({"Content-Type": ctype, "Content-Encoding": cenc})
-
-        d = tempfile.mkdtemp()
-        keep = (urllib.request.urlopen, recon.HERE, recon.WAIT,
-                dict(recon._ROBOTS_CACHE))
-        urllib.request.urlopen = lambda *a, **k: _返す()
-        recon.HERE = d
-        recon.WAIT = 0
-        recon._ROBOTS_CACHE.clear()
-        try:
-            body, state = recon._get_robots("https", "example.test")
-            path = os.path.join(d, "data", "raw", "_robots", "example.test.txt")
-            置いた = b""
-            if os.path.exists(path):
-                with open(path, "rb") as f:
-                    置いた = f.read()
-            return body, state, 置いた
-        finally:
-            (urllib.request.urlopen, recon.HERE, recon.WAIT) = keep[:3]
-            recon._ROBOTS_CACHE.clear()
-            recon._ROBOTS_CACHE.update(keep[3])
-
-    def test_ShiftJISの注記が壊れずに残る(self):
-        注記 = "# 競売情報サイト\nUser-agent: *\nDisallow: /app/\n"
-        生 = 注記.encode("cp932")
-        body, state, 置いた = self.取らせる(生)
-        self.assertEqual(state, "ok")
-        # **バイトがそのまま入っていること。** ここが本体
-        self.assertIn(生, 置いた, "保存したものが生のバイトではない")
-        self.assertNotIn("�".encode("utf-8"), 置いた,
-                         "保存したものに置換文字が入っている")
-        # 読むほうは、文字コードを当てて読めていること
-        self.assertIn("競売情報サイト", body)
-        self.assertIn("Disallow: /app/", body)
-
-    def test_UTF8のときも今までどおり読める(self):
-        生 = "# こんにちは\nUser-agent: *\nAllow: /\n".encode("utf-8")
-        body, state, 置いた = self.取らせる(生, ctype="text/plain; charset=utf-8")
-        self.assertEqual(state, "ok")
-        self.assertIn(生, 置いた)
-        self.assertIn("こんにちは", body)
-
-    def test_圧縮されていたら_読めないとして扱う(self):
-        """**拒否とは混ぜない。** 読めないのであって、断られたのではない。"""
-        import gzip
-        生 = gzip.compress(b"User-agent: *\nDisallow: /\n")
-        body, state, 置いた = self.取らせる(生, cenc="gzip")
-        self.assertIn(生, 置いた, "圧縮でもバイトは残すこと")
-        self.assertEqual(body, "")
-        self.assertEqual(state, "unknown",
-                         "読めなかったものを ok や 拒否 にしない")
-
-    def test_取得日と出どころを頭に控える(self):
-        生 = b"User-agent: *\nDisallow: /x/\n"
-        _body, _state, 置いた = self.取らせる(生)
-        頭 = 置いた.split(生)[0].decode("utf-8")
-        self.assertIn("# 取得日:", 頭)
-        self.assertIn("https://example.test/robots.txt", 頭)
 
 class 辿った数を数えて出す(unittest.TestCase):
     """報告に「（辿った数: 0 本）」と **0 を直接書いていた**（2026-09-20）。
@@ -632,44 +505,17 @@ class 取得元の欄と題材の欄を分ける(unittest.TestCase):
         GETで再現できない（手で保存）      4
         相手にその頁が無い                 1
 
-    **真偽を4語に替えるときの罠**も、ここで固定する。
-    4語はどれも非空文字列なので、`if not src.get("torikata")` のままだと
-    **どの語でも真**になり、「取ってはいけない」にも取りに行く。
+    **2026-09-25 から**、取得元の4語は sources.json の欄には書かない。
+    カード（`data/ref/torimoto-card.json`）＋運営者承認から `common/kado.py`
+    が導く（`common/torikata.py` の docstring）。ここは handoff・manual・url
+    未確認という、**カードの手前で決まる**話だけを見る（カード状態が要る話は
+    下の `カードから導く取得元の状態` クラスで、偽のカード置き場を使って試す）。
     """
 
     def もと(self, **kw):
-        s = {"id": "x", "url": "https://example.test/a", "system": "keibai",
-             "torikata": "取ってよい"}
+        s = {"id": "x", "url": "https://example.test/a", "system": "keibai"}
         s.update(kw)
         return s
-
-    def test_取ってはいけないものは取らない(self):
-        self.assertFalse(torikata.toru(self.もと(torikata="取ってはいけない")))
-
-    def test_知らない語は取らない(self):
-        """**きつい側に倒す。** 綴りが違ったら取りに行かない。"""
-        for g in ("取ってよし", "OK", "true", "", None, "とってよい"):
-            self.assertFalse(torikata.toru(self.もと(torikata=g)),
-                             "知らない語 %r で取りに行っている" % (g,))
-
-    def test_欄が無いものは取らない(self):
-        s = self.もと()
-        del s["torikata"]
-        self.assertFalse(torikata.toru(s))
-
-    def test_取ってよい以外の3語は取りに行かない(self):
-        """**取りに行くのは「取ってよい」だけ**（2026-09-24）。
-
-        前は「未確認」「規約未確定」を止める語ではないとして、取りに行っていた
-        （robots は見ている、という理由）。迷ったら止まる。未確認を許可扱いしない。
-        `kiwadoi()` は、関所が正しければいつも空になる。
-        """
-        for g in ("未確認", "規約未確定", "取ってはいけない"):
-            self.assertFalse(torikata.toru(self.もと(torikata=g)), g)
-            self.assertIn(g, torikata.naze_toranai(self.もと(torikata=g)))
-            self.assertEqual(torikata.kiwadoi([self.もと(torikata=g)]), [], g)
-        self.assertTrue(torikata.toru(self.もと()))
-        self.assertEqual(torikata.kiwadoi([self.もと()]), [])
 
     def test_取らない理由は1つの真偽にしない(self):
         """減らす手が違うので、同じ箱に入れない。"""
@@ -679,7 +525,6 @@ class 取得元の欄と題材の欄を分ける(unittest.TestCase):
                          torikata.RIYUU_TEMOCHI)
         self.assertEqual(torikata.naze_toranai(self.もと(url="")),
                          torikata.RIYUU_NAI)
-        self.assertEqual(torikata.naze_toranai(self.もと()), "")
 
     def test_手で保存するものを相手に無いと名乗らない(self):
         """**BIT の一覧・結果・過去・取下げは url が空**。
@@ -691,15 +536,15 @@ class 取得元の欄と題材の欄を分ける(unittest.TestCase):
             torikata.naze_toranai(self.もと(manual=True, url="")),
             torikata.RIYUU_TEMOCHI)
 
-    def test_全部の取得元が4語のどれかを持っている(self):
+    def test_torikata欄はもうsources_jsonに無い(self):
+        """**カードの「移行元」に写してある。二重に持たない**（common/torikata.py）。"""
         with io.open(os.path.join(ROOT, "sources.json"), encoding="utf-8") as f:
             src = json.load(f)["sources"]
         for s in src:
-            self.assertIn(s.get("torikata"), torikata.GO,
-                          "%s に取得元の欄が無い（足した日に黙って取りに行かなくなる）"
-                          % s["id"])
-            self.assertTrue((s.get("torikata_riyuu") or "").strip(),
-                            "%s に取得元の欄の理由が書いていない" % s["id"])
+            self.assertNotIn("torikata", s,
+                             "%s に torikata 欄が残っている" % s["id"])
+            self.assertNotIn("torikata_riyuu", s,
+                             "%s に torikata_riyuu 欄が残っている" % s["id"])
 
     def test_enabledはもう使わない(self):
         with io.open(os.path.join(ROOT, "sources.json"), encoding="utf-8") as f:
@@ -710,51 +555,138 @@ class 取得元の欄と題材の欄を分ける(unittest.TestCase):
                              "**4語と真偽を両方持つと、どちらが効くか読めない**"
                              % s["id"])
 
-    def test_題材は取得元が1つ止まっても止まらない(self):
-        d = torikata.daizai([self.もと(id="a", system="keibai"),
-                             self.もと(id="b", system="keibai",
-                                       torikata="取ってはいけない")])
-        self.assertEqual(d["keibai"], {"取得元": 2, "通る": 1, "通れる": True})
-
-    def test_題材ぜんぶ止まっていることは見える(self):
-        d = torikata.daizai([self.もと(id="a", system="koyu", handoff="よそ")])
-        self.assertFalse(d["koyu"]["通れる"])
+    def test_handoff以外はカードがある(self):
+        """カードid = sources.json の id。**handoff の収集先にはカードが無い**（もともと取らない）。"""
+        with io.open(os.path.join(ROOT, "data", "ref", "torimoto-card.json"),
+                     encoding="utf-8") as f:
+            cards = json.load(f)["cards"]
+        with io.open(os.path.join(ROOT, "sources.json"), encoding="utf-8") as f:
+            src = json.load(f)["sources"]
+        for s in src:
+            if s.get("handoff"):
+                self.assertNotIn(s["id"], cards,
+                                 "%s は姉妹サイト送りなのにカードがある"
+                                 "（もともと取らないもの。カードは要らない）" % s["id"])
+                continue
+            self.assertIn(s["id"], cards,
+                          "%s にカードが無い（足した日に黙って取りに行かなくなる）"
+                          % s["id"])
 
     def test_実データの題材(self):
-        """**4つの題材を全部出す。通れないものも出す。**"""
+        """**4つの題材を全部出す。通れないものも出す。**
+
+        **いまは運営者の承認が1件も無いので、どの題材も「通れる」にはならない**
+        （カード＋承認がそろって初めて通る。迷ったら止まる側に倒した初期状態。
+        承認が進んでここが崩れたら、参謀 が見直すこと。カードから実際に
+        「取ってよい」を導けることは `カードから導く取得元の状態` クラスが
+        偽のカード置き場で確かめている）。
+        """
         with io.open(os.path.join(ROOT, "sources.json"), encoding="utf-8") as f:
             src = json.load(f)["sources"]
         d = torikata.daizai(src)
         self.assertEqual(sorted(d), ["keibai", "kobai", "kokuyu", "koyu"])
-        self.assertTrue(d["kobai"]["通れる"])
-        # **競売で通れるのは、いま規約のページだけ。** BIT の中身の取得元は
-        # どれも「規約未確定」（目的外使用の禁止に統計が当たるかは弁護士確認事項）で、
-        # 取りに行くのは「取ってよい」だけになったため（2026-09-24）
-        通る競売 = [s["id"] for s in src
-                 if s.get("system") == "keibai" and torikata.toru(s)]
-        self.assertEqual(
-            [i for i in 通る競売
-             if [s for s in src if s["id"] == i][0].get("kind") != "terms"], [],
-            "競売の中身の取得元に通れるものができたなら、その取得元の欄を"
-            "「取ってよい」にした根拠（torikata_riyuu）を確かめること")
-        self.assertFalse(d["koyu"]["通れる"],
-                         "公有財産に通れる取得元ができたなら、"
-                         "姉妹サイト送りの取り決めを見直すこと")
+        # **取りに行っているのに「取ってよい」ではない取得元は、いつも空が正しい。**
+        # 関所が緩んでいれば、ここが空でなくなる
+        self.assertEqual(torikata.kiwadoi(src), [])
 
 
-class 取る判定はtorikataを通る(unittest.TestCase):
-    """**recon.py が真偽の欄に戻ったら鳴る。**
+class カードから導く取得元の状態(unittest.TestCase):
+    """`common/torikata.py` の4語が、カード＋運営者承認から正しく導かれるか。
 
-    前の recon.py は `src.get("enabled", True)` で見ていたので、欄が無いものは
-    「取る」になる。sources.json から enabled を消したまま、判定だけが前に戻ると、
-    「取ってはいけない」の取得元にも robots を見に行く。
-    `torikata.py` の検査だけでは、recon.py がそれを使っているかは分からない。
-    だから recon_one() そのものに渡して、robots を見る手前で止まるかを見る。
-    **外には出ない**（robots を見に行くところを差し替えてある）。
+    **偽のカード置き場でだけ試す**（`data/ref/shounin/` に承認ファイルを
+    作らない。`tests/test_kado.py` の `Oki` と同じ形。`tests/nise_kado.py`）。
+    本物の置き場（sources.json・data/ref/）は見ない。
     """
 
-    def 渡す(self, 語):
-        import tempfile
+    def setUp(self):
+        yoi = nise_kado.card()
+        dame = nise_kado.card(統括判定案="取ってはいけない")
+        mikakutei = nise_kado.card(統括判定案="規約未確定")
+        cards = {"yoi": yoi, "dame": dame, "mikakutei": mikakutei}
+        shounin = {"yoi": nise_kado.shounin_of("yoi", yoi)}
+        self.root = nise_kado.repo(cards, nise_kado.daicho_of(cards), shounin)
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.keep = torikata.ROOT
+        torikata.ROOT = self.root
+        self.addCleanup(setattr, torikata, "ROOT", self.keep)
+
+    def もと(self, **kw):
+        s = {"id": "yoi", "url": "https://example.test/a", "system": "keibai"}
+        s.update(kw)
+        return s
+
+    def test_承認までそろえば取ってよい(self):
+        self.assertEqual(torikata.go(self.もと()), "取ってよい")
+        self.assertTrue(torikata.toru(self.もと()))
+        self.assertEqual(torikata.naze_toranai(self.もと()), "")
+        self.assertEqual(torikata.kiwadoi([self.もと()]), [])
+
+    def test_取ってはいけないものは取らない(self):
+        self.assertFalse(torikata.toru(self.もと(id="dame")))
+        self.assertIn(torikata.TORANAI,
+                      torikata.naze_toranai(self.もと(id="dame")))
+
+    def test_取ってよい以外は取りに行かず_kiwadoiも空(self):
+        """`kiwadoi()` は、関所が正しければいつも空になる。"""
+        for cid in ("dame", "mikakutei", "nai-card"):
+            with self.subTest(cid=cid):
+                s = self.もと(id=cid)
+                self.assertFalse(torikata.toru(s), cid)
+                self.assertEqual(torikata.kiwadoi([s]), [], cid)
+
+    def test_カードが無い先は未確認として取らない(self):
+        """**知らない語と同じく、取らない側に倒す。** カードが無ければ「未確認」。"""
+        self.assertEqual(torikata.go(self.もと(id="nai-card")), "未確認")
+        self.assertFalse(torikata.toru(self.もと(id="nai-card")))
+
+    def test_idが無いものは取らない(self):
+        s = self.もと()
+        del s["id"]
+        self.assertFalse(torikata.toru(s))
+        self.assertIn("id", torikata.naze_toranai(s))
+
+    def test_題材は取得元が1つ止まっても止まらない(self):
+        d = torikata.daizai([self.もと(id="yoi", system="keibai"),
+                             self.もと(id="dame", system="keibai")])
+        self.assertEqual(d["keibai"], {"取得元": 2, "通る": 1, "通れる": True})
+
+    def test_題材ぜんぶ止まっていることは見える(self):
+        d = torikata.daizai([self.もと(id="dame", system="koyu")])
+        self.assertFalse(d["koyu"]["通れる"])
+
+    def test_handoffはカードより先に見る(self):
+        """カードが無い id でも、handoff が付いていれば「題材が別」で止まる。"""
+        s = self.もと(id="handoff付きの空id", handoff="よそ")
+        self.assertEqual(torikata.naze_toranai(s), torikata.RIYUU_DAIZAI)
+
+
+class 取る判定はカードの門を通る(unittest.TestCase):
+    """**recon.py が古い判定に戻ったら鳴る。**
+
+    前の recon.py は `torikata.naze_toranai(src)`（sources.json の4語）を
+    見ていた。いまは `K.card_mon()` / `with K.sesshon():`（common/kado.py）を
+    見る。`torikata.py` の検査だけでは、`recon_one()` がそれを使っているかは
+    分からない。だから `recon_one()` そのものに渡して、robots を見る手前で
+    止まるかを見る。**外には出ない**（robots を見に行くところを差し替えて
+    あるうえ、カードの門が通さなければ `check_robots()` 自体が呼ばれない）。
+    """
+
+    def setUp(self):
+        self._k = None
+        self.keep_genzai = kado.genzai()
+        self.addCleanup(self._modosu)
+
+    def _modosu(self):
+        kado._KADO = self.keep_genzai
+        if self._k is not None:
+            self._k.close()
+
+    def 据える(self, **kw):
+        self._k = nise_kado.Kumitate(**kw)
+        kado._KADO = self._k.kado()
+        return self._k
+
+    def 渡す(self, cid, url=None):
         呼んだ = []
 
         def 見に行った(*a, **k):
@@ -763,27 +695,44 @@ class 取る判定はtorikataを通る(unittest.TestCase):
 
         keep = recon.check_robots
         recon.check_robots = 見に行った
-        src = {"id": "shiken", "name": "試験", "system": "keibai",
-               "kind": "bit-schedule", "url": "https://example.invalid/",
-               "torikata": 語, "torikata_riyuu": "試験"}
+        src = {"id": cid, "name": "試験", "system": "keibai",
+               "kind": "bit-schedule",
+               "url": url or "https://example.invalid/data/x.html"}
+        # **保存先は金庫（KINKO_DIR）の中でなければならない**（Kado.kinko_preflight）。
+        # 別の一時フォルダを渡すと、承認がそろっていても金庫の手前で止まる
+        raw_dir = os.path.join(self._k.kinko, "raw")
         try:
-            res = recon.recon_one(src, "2026-10-01", tempfile.mkdtemp(), {}, {})
+            res = recon.recon_one(src, "2026-10-01", raw_dir, {}, {})
         except RuntimeError:
             res = None
         finally:
             recon.check_robots = keep
         return 呼んだ, res
 
-    def test_取ってはいけない先はrobotsの手前で止まる(self):
-        呼んだ, res = self.渡す(torikata.TORANAI)
+    def test_カードが無い先はrobotsの手前で止まる(self):
+        self.据える(cid="shiken")
+        呼んだ, res = self.渡す("nai-card")
         self.assertEqual(呼んだ, [],
-                         "「取ってはいけない」の取得元に robots を見に行った。"
-                         "取る判定が torikata を通っていない")
-        self.assertIn(torikata.TORANAI, res["skipped"])
+                         "カードの無い取得元に robots を見に行った。"
+                         "取る判定が common/kado.py の門を通っていない")
+        self.assertIn("門で止めた", res["skipped"])
 
-    def test_取ってよい先はrobotsまで行く(self):
+    def test_未承認は通らない(self):
+        self.据える(cid="mikakutei", shounin=False, 統括判定案="取ってよい")
+        呼んだ, res = self.渡す("mikakutei")
+        self.assertEqual(呼んだ, [])
+        self.assertIn("門で止めた", res["skipped"])
+
+    def test_取ってはいけないは通らない(self):
+        self.据える(cid="dame", 統括判定案="取ってはいけない")
+        呼んだ, res = self.渡す("dame")
+        self.assertEqual(呼んだ, [])
+        self.assertIn("門で止めた", res["skipped"])
+
+    def test_承認された先はrobotsまで行く(self):
         """**材料が見分けられることの確かめ。** 差し替えが効いていなければ、上の1本は何も見ていない。"""
-        呼んだ, _ = self.渡す(torikata.GO[0])
+        k = self.据える(cid="shiken")
+        呼んだ, _ = self.渡す(k.cid, url="https://example.invalid/data/x.html")
         self.assertEqual(len(呼んだ), 1)
 
 

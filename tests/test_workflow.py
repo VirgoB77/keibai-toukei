@@ -456,6 +456,41 @@ class 公開用のworkflowの控え(unittest.TestCase):
         self.assertLess(確かめ, つなぐ,
                         "**つないでから確かめている。** 順番が逆")
 
+    def test_金庫が非公開だと確かめた直後にだけ_KINKO_DIRを渡す(self):
+        """正本「門のつなぎ込み」4節。**確かめられなかった道では書かない。**
+
+        `KINKO_DIR`／`KINKO_PRIVATE` は、非公開の確認（このファイルの
+        「金庫が非公開であることの確認」）を通ったあと、金庫をつないだ
+        （`git clone`）その成功の道でだけ `$GITHUB_ENV` に書く。
+        """
+        つなぐ = step_body(self.text, "金庫を隣に出す")
+        self.assertIsNotNone(つなぐ)
+        self.assertIn("KINKO_DIR", つなぐ)
+        self.assertIn("KINKO_PRIVATE=1", つなぐ)
+        # **clone のあとに書いていること。** 先に書くと、clone が失敗した
+        # ときにも門が「金庫がある」と思ってしまう
+        self.assertLess(つなぐ.index("git clone"), つなぐ.index("KINKO_DIR"),
+                        "clone より前に KINKO_DIR を渡している")
+        確かめ = self.body.index("金庫が非公開であることの確認")
+        渡す = self.body.index("KINKO_DIR")
+        self.assertLess(確かめ, 渡す, "非公開を確かめる前に KINKO_DIR を渡している")
+
+    def test_相手台帳を取りに行く前に読み直す(self):
+        """**ogataten-nippo 以外の置き場は、取りに行く前に正本から読み直す**
+        （正本「門のつなぎ込み」4節）。ここは ogataten-nippo ではないので要る。
+        """
+        読み直す = step_body(self.text, "相手台帳を正本から読み直す")
+        self.assertIsNotNone(読み直す, "相手台帳を読み直す step が無い")
+        self.assertIn(
+            "raw.githubusercontent.com/VirgoB77/ogataten-nippo/main/"
+            "data/ref/aite-daicho.json", 読み直す)
+        self.assertIn("data/ref/aite-daicho.json", 読み直す)
+        # 読めなかった日は、置いてある古い控えも使わない
+        self.assertIn("rm -f data/ref/aite-daicho.json", 読み直す)
+        偵察 = self.body.index("偵察する")
+        台帳 = self.body.index("相手台帳を正本から読み直す")
+        self.assertLess(台帳, 偵察, "偵察する前に相手台帳を読み直していない")
+
     def test_取り直せないものを先にしまう(self):
         """**収集用 → 公開用。** 集計より前に、その朝に取ったページを金庫へ。"""
         金庫 = self.body.index("金庫にしまう（取り直せないものが先）")
@@ -480,6 +515,15 @@ class 公開用のworkflowの控え(unittest.TestCase):
         self.assertIn('git add "data/$(basename "$f")"', 公開)
         self.assertNotIn("git add data/public/index.json", 公開,
                          "しまう場所のまま配っている")
+
+    def test_門が書く控えを公開用のcommitに含める(self):
+        """`data/ref/aite-kyou.json`（今日の控え）・`data/ref/kikai-fuda.json`
+        （機械札）は門（common/kado.py）が書く。**公開用の commit に
+        含めないと、走るたびに書いた内容が消える。**
+        """
+        公開 = self.body[self.body.index("公開用にしまう（許可リスト）"):]
+        for f in ("data/ref/aite-kyou.json", "data/ref/kikai-fuda.json"):
+            self.assertIn(f, 公開, "%s を公開用の commit に含めていない" % f)
 
     def test_dataを丸ごと消さない(self):
         """**`data/` には金庫への symlink が並んでいる。**

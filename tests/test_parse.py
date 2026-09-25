@@ -10,11 +10,14 @@
 
 import os
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import aggregate  # noqa: E402
 import parse  # noqa: E402
+from common import kanzen  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -949,6 +952,237 @@ class 平米と名乗る欄に平米だけを入れる(unittest.TestCase):
     def test_読めないものはNone(self):
         for t in ("-", "不明", "", None):
             self.assertIsNone(parse.to_area(t))
+
+
+# ---------------------------------------------------------------- 完全観測の印
+#
+# BITのページ送り（pager）の形だけをまねた作りもの。
+# **実物の住所・事件番号などは1文字も写さない**（依頼文の「絶対に守ること」）。
+# 実物で確かめた特徴だけ再現する：
+#   - いまのページ番号の <a> には onclick が無い（もう押せないので）
+#   - ほかのページ番号には onclick="getData(番号)" が付く
+#   - 「末尾」（aria-label="last"）の onclick の番号が、最後のページ番号になる
+def pager_html(genzai, saigo, honbun_owaru=True):
+    ban = []
+    for n in range(1, saigo + 1):
+        if n == genzai:
+            ban.append('<div class="page-item disabled">'
+                       '<a class="page-link" href="#">%d</a></div>' % n)
+        else:
+            ban.append('<div class="page-item">'
+                       '<a class="page-link" href="#" onclick="getData(%d);">'
+                       '%d</a></div>' % (n, n))
+    last_disabled = " disabled" if genzai == saigo else ""
+    ban.append('<div class="page-item%s"><a class="page-link" href="#" '
+              'onclick="getData(%d);" aria-label="last">'
+              '<span></span></a></div>' % (last_disabled, saigo))
+    body = ('<html><body><nav class="bit__pager"><div class="pagination">'
+           + "".join(ban) + "</div></nav></body></html>")
+    return body if honbun_owaru else body + "\n<!-- 保存が途中で切れた -->"
+
+
+class ページ送りを読む(unittest.TestCase):
+    """`parse.pager_info()`。実物の保存ページの形（page-item・aria-label）から、
+    「今のページ番号」と「最後のページ番号」を読む（spec/kanzen_keibai.md 2）。
+    """
+
+    def test_1ページだけの一覧(self):
+        self.assertEqual(parse.pager_info(pager_html(1, 1)), (1, 1))
+
+    def test_2ページの1枚目(self):
+        self.assertEqual(parse.pager_info(pager_html(1, 2)), (1, 2))
+
+    def test_2ページの2枚目(self):
+        self.assertEqual(parse.pager_info(pager_html(2, 2)), (2, 2))
+
+    def test_pagerが見当たらなければNone(self):
+        self.assertIsNone(parse.pager_info("<html><body>物件は無い</body></html>"))
+
+    def test_空文字もNone(self):
+        self.assertIsNone(parse.pager_info(""))
+
+
+class 観測の基本の印(unittest.TestCase):
+    """`parse.kansoku_kihon_shirushi()`。入口に届いた・必要本文を受け取った・
+    ページ送りを最後まで受け取った の3つ（spec/kanzen_keibai.md 2）。
+    """
+
+    def test_2ページとも揃っていればぜんぶはい(self):
+        s = parse.kansoku_kihon_shirushi([pager_html(1, 2), pager_html(2, 2)])
+        self.assertEqual(s["入口に届いた"], kanzen.HAI)
+        self.assertEqual(s["必要本文を受け取った"], kanzen.HAI)
+        self.assertEqual(s["ページ送りを最後まで受け取った"], kanzen.HAI)
+
+    def test_2枚目が置かれていない(self):
+        """**人が2枚目を保存し忘れた形。** 欠けている→いいえ。"""
+        s = parse.kansoku_kihon_shirushi([pager_html(1, 2)])
+        self.assertEqual(s["ページ送りを最後まで受け取った"], kanzen.IIE)
+
+    def test_pagerがどのページにも無い(self):
+        s = parse.kansoku_kihon_shirushi(["<html><body>物件0件</body></html>"])
+        self.assertEqual(s["ページ送りを最後まで受け取った"], kanzen.WAKARANAI)
+
+    def test_途中で切れた保存は本文いいえ(self):
+        s = parse.kansoku_kihon_shirushi([pager_html(1, 1, honbun_owaru=False)])
+        self.assertEqual(s["必要本文を受け取った"], kanzen.IIE)
+        # 本文が切れていても、ファイル自体は読めている
+        self.assertEqual(s["入口に届いた"], kanzen.HAI)
+
+    def test_読めなかったファイルがある(self):
+        """入口に届いていないので、後ろの2つも確かめようがない。"""
+        s = parse.kansoku_kihon_shirushi([pager_html(1, 2), None])
+        self.assertEqual(s["入口に届いた"], kanzen.IIE)
+        self.assertEqual(s["必要本文を受け取った"], kanzen.WAKARANAI)
+        self.assertEqual(s["ページ送りを最後まで受け取った"], kanzen.WAKARANAI)
+
+    def test_ページが1枚も無い(self):
+        s = parse.kansoku_kihon_shirushi([])
+        self.assertEqual(s["入口に届いた"], kanzen.IIE)
+
+
+class 解析できたの印(unittest.TestCase):
+    """`parse.kansoku_kaiseki_shirushi()`。0件のとき・急減のときは
+    「消えた」「読めなかった」と決めつけず、分からないへ倒す。
+    """
+
+    def test_行が読めていればはい(self):
+        kaiseki, why = parse.kansoku_kaiseki_shirushi("<html></html>",
+                                                       [{"key": "A"}], 0, set(), {"A"})
+        self.assertEqual(kaiseki, kanzen.HAI)
+        self.assertEqual(why, "")
+
+    def test_0件で前も0件なら読めなかった扱い(self):
+        """はじめての観測、または前から0件。原典の0件表示を確かめていないので、
+        いいえ（読めなかった）に倒す。**分からないへ逃げない**（zero_gyouの規則）。
+        """
+        kaiseki, why = parse.kansoku_kaiseki_shirushi("物件は0件", [], 0, set(), set())
+        self.assertEqual(kaiseki, kanzen.IIE)
+        self.assertNotEqual(why, "")
+
+    def test_前は件数があって今回0件は分からない(self):
+        """**消えたと決めつけない。** 保存し忘れ・様式変わりかもしれない。"""
+        kaiseki, _why = parse.kansoku_kaiseki_shirushi(
+            "物件は0件", [], 5, {"A", "B", "C", "D", "E"}, set())
+        self.assertEqual(kaiseki, kanzen.WAKARANAI)
+
+    def test_半分以上が一度に消えたら分からない(self):
+        mae_kagi = {"A", "B", "C", "D"}
+        ima_kagi = {"A"}                    # 4件のうち3件（75%）が消えた
+        kaiseki, _why = parse.kansoku_kaiseki_shirushi(
+            "<html></html>", [{"key": "A"}], len(mae_kagi), mae_kagi, ima_kagi)
+        self.assertEqual(kaiseki, kanzen.WAKARANAI)
+
+
+class private保存成功の印(unittest.TestCase):
+    """`parse.kansoku_hozon_shirushi()`。ファイルの実体が金庫（KINKO_DIR）の中か。"""
+
+    def setUp(self):
+        self.kinko = tempfile.mkdtemp()
+        self.soto = tempfile.mkdtemp()
+        self.f = os.path.join(self.kinko, "a.html")
+        with open(self.f, "w", encoding="utf-8") as fp:
+            fp.write("x")
+
+    def test_KINKO_DIRが無ければ分からない(self):
+        self.assertEqual(parse.kansoku_hozon_shirushi([self.f], {}), kanzen.WAKARANAI)
+
+    def test_金庫の中ならはい(self):
+        got = parse.kansoku_hozon_shirushi([self.f], {"KINKO_DIR": self.kinko})
+        self.assertEqual(got, kanzen.HAI)
+
+    def test_金庫の外ならいいえ(self):
+        got = parse.kansoku_hozon_shirushi([self.f], {"KINKO_DIR": self.soto})
+        self.assertEqual(got, kanzen.IIE)
+
+
+class 完全観測どうしの比較でだけ消えたを付ける(unittest.TestCase):
+    """`parse.merge_snapshot()` の `kanzen_flag` / `mae_kanzen_hi`。
+
+    spec/kanzen.md「消えた」は、直前の完全観測と今回の完全観測の比較だけで付ける。
+    不完全な回は、消失判定の時点（`kakunin_saigo`）を進めない。
+    """
+
+    def 行(self, key, **kw):
+        d = {"key": key, "property_key": key, "open_date": "2026-11-05"}
+        d.update(kw)
+        return d
+
+    def test_完全観測ならkakunin_saigoが進む(self):
+        merged = {}
+        parse.merge_snapshot(merged, [self.行("A")], "2026-09-17",
+                             kanzen_flag=True)
+        self.assertEqual(merged["A"]["kakunin_saigo"], "2026-09-17")
+
+    def test_不完全観測は進めない(self):
+        merged = {}
+        parse.merge_snapshot(merged, [self.行("A")], "2026-09-17",
+                             kanzen_flag=False)
+        self.assertIsNone(merged["A"].get("kakunin_saigo"))
+
+    def test_直前の完全観測に無ければ消えたを付けない(self):
+        """今回は完全観測でも、比べる直前の完全観測（`mae_kanzen_hi`）が
+        渡されなければ、1件も「消えた」を付けない（止まる側に倒す）。
+        """
+        merged = {}
+        parse.merge_snapshot(merged, [self.行("A"), self.行("B")],
+                             "2026-09-17", kanzen_flag=True)
+        # Bがいなくなった。ただし比べる相手を渡していない
+        parse.merge_snapshot(merged, [self.行("A")], "2026-09-24",
+                             kanzen_flag=True, mae_kanzen_hi=None)
+        self.assertNotIn("gone_on", merged["B"])
+
+    def test_完全観測どうしなら消えたを付ける(self):
+        merged = {}
+        parse.merge_snapshot(merged, [self.行("A"), self.行("B")],
+                             "2026-09-17", kanzen_flag=True)
+        parse.merge_snapshot(merged, [self.行("A")], "2026-09-24",
+                             kanzen_flag=True, mae_kanzen_hi="2026-09-17")
+        self.assertEqual(merged["B"]["gone_on"], "2026-09-24")
+        self.assertEqual(merged["B"]["gone_kansoku"],
+                         ["2026-09-17", "2026-09-24"])
+        self.assertEqual(merged["B"]["status"], aggregate.GONE)
+
+    def test_不完全観測では消えたを付けない(self):
+        """今回が完全観測でなければ、直前の完全観測が分かっていても付けない
+        （不完全な回のうちに「消えた」と言わない）。
+        """
+        merged = {}
+        parse.merge_snapshot(merged, [self.行("A"), self.行("B")],
+                             "2026-09-17", kanzen_flag=True)
+        parse.merge_snapshot(merged, [self.行("A")], "2026-09-24",
+                             kanzen_flag=False, mae_kanzen_hi="2026-09-17")
+        self.assertNotIn("gone_on", merged["B"])
+        # 不完全観測なので、消失判定の時点も進めない
+        self.assertEqual(merged["A"]["kakunin_saigo"], "2026-09-17")
+
+    def test_再登場したら消えたが取り消される(self):
+        merged = {}
+        parse.merge_snapshot(merged, [self.行("A"), self.行("B")],
+                             "2026-09-17", kanzen_flag=True)
+        parse.merge_snapshot(merged, [self.行("A")], "2026-09-24",
+                             kanzen_flag=True, mae_kanzen_hi="2026-09-17")
+        self.assertIn("gone_on", merged["B"])
+        # Bがまた一覧に出た
+        parse.merge_snapshot(merged, [self.行("A"), self.行("B")],
+                             "2026-10-01", kanzen_flag=True,
+                             mae_kanzen_hi="2026-09-24")
+        self.assertNotIn("gone_on", merged["B"],
+                         "また見えたのに消えたが残っている")
+
+    def test_直前の完全観測で見えていない行には付けない(self):
+        """不完全観測の日にだけ現れた行は `kakunin_saigo` を持たない。
+        消えても「直前の完全観測との比較」とは言えないので、消えたを付けない。
+        """
+        merged = {}
+        parse.merge_snapshot(merged, [self.行("A")], "2026-09-17",
+                             kanzen_flag=True)
+        # Cは不完全観測の日にだけ現れた（kakunin_saigoを持たない）
+        parse.merge_snapshot(merged, [self.行("A"), self.行("C")],
+                             "2026-09-20", kanzen_flag=False)
+        # 次の完全観測でCがいなくなった
+        parse.merge_snapshot(merged, [self.行("A")], "2026-09-24",
+                             kanzen_flag=True, mae_kanzen_hi="2026-09-17")
+        self.assertNotIn("gone_on", merged["C"])
 
 
 if __name__ == "__main__":

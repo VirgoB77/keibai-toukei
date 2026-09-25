@@ -33,22 +33,27 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import recon  # noqa: E402
+import nise_kado  # noqa: E402  検査の中だけの偽の門（tests/kinko.py と同じ、手伝いのモジュール）
+from common import kado  # noqa: E402
 from common.report import NOT_PUBLIC_LINE  # noqa: E402
 
 # レポートにだけ入ってよい目印。**ログ・要約に1つでも出たら鳴る**
 目印 = "ZQ7"
+# **id にカードは無い（この検査では見ない）。** ここは門そのものではなく、
+# 門を通った先の報告・ログを見る検査なので、検査の中だけの通す偽の門
+# （nise_kado.ToosuMon）を差し込む。sources.json の欄はもう見られない
 取得元 = [
     {"id": "himitsu-id-ZQ7", "name": "目印の取得元 ZQ7", "system": "kobai",
-     "area": "osaka", "kind": "kobai-list", "torikata": "取ってよい",
+     "area": "osaka", "kind": "kobai-list",
      "url": "https://example.invalid/himitsu-path-ZQ7.html",
      "note": "目印のメモ ZQ7"},
     {"id": "okuri-id-ZQ7", "name": "送る取得元 ZQ7", "system": "kokuyu",
-     "area": "osaka", "kind": "kokuyu-list", "torikata": "取ってよい",
+     "area": "osaka", "kind": "kokuyu-list",
      "handoff": "姉妹サイト",
      "url": "https://example.invalid/okuri-path-ZQ7.html",
      "note": "送るメモ ZQ7"},
     {"id": "kowareta-id-ZQ7", "name": "取れない取得元 ZQ7", "system": "kobai",
-     "area": "hyogo", "kind": "kobai-list", "torikata": "取ってよい",
+     "area": "hyogo", "kind": "kobai-list",
      "url": "https://example.invalid/kowareta-path-ZQ7.html",
      "note": "取れないメモ ZQ7"},
 ]
@@ -90,15 +95,24 @@ class 走らせる(unittest.TestCase):
             json.dump({"sources": 取得元}, f, ensure_ascii=False)
         self.要約 = os.path.join(self.d, "summary.md")
         self.取った = []
+        self.addCleanup(setattr, kado, "_KADO", kado.genzai())
 
         def 数えて取る(url):
             self.取った.append(url)
             return 取ってくる(url)
 
+        def 偽のhajimeru(*a, **k):
+            # **本番の kado.hajimeru() の代わり。** ここは報告・ログの形を見る
+            # 検査で、門そのものの挙動は試していない（正本の共通指示書 5節）。
+            # 通す偽の門を、本物の門の代わりに据える
+            kado._KADO = nise_kado.ToosuMon()
+            return kado._KADO
+
         差し替え = [
             mock.patch.object(recon, "HERE", self.d),
             mock.patch.object(recon, "WAIT", 0),
             mock.patch.object(recon, "_BUSY_HOSTS", set()),
+            mock.patch.object(recon.kado, "hajimeru", 偽のhajimeru),
             mock.patch.object(recon, "check_robots",
                               lambda url: (True, "許可（テスト）", None)),
             mock.patch.object(recon, "fetch", 数えて取る),

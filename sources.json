@@ -2,8 +2,6 @@
  "_meta": {
   "何これ": "役所が土地を売っているページの一覧。recon.py がここを順に見に行く。設計は DESIGN.md",
   "棚は4段": "system は keibai（競売・裁判所）と kobai（公売・税の差押え）の2段。kokuyu（国有財産）と koyu（公有財産）は制度が別なので姉妹サイト側に置く。handoff が付いているものがそれで、取りに行かないまま残してある（同じところを何度も調べ直さないため）",
-  "torikata": "取得元の状態。正本 9節の4語（取ってよい／未確認／規約未確定／取ってはいけない）のどれか。「取ってはいけない」と、知らない語・欄が無いものは取りに行かない。取る・取らないの判定は common/torikata.py の1か所だけ。真偽の欄（enabled）は使わない",
-  "torikata_riyuu": "その語にした理由。語だけ書いて理由を空にしない",
   "manual": "true なら Actions で取りに行かず、人が inbox/ に保存したHTMLだけを読む。フォーム遷移でしか出ないページ用",
   "kind": "そのページから何が取れるか。parse.py はこの kind で読み方を切り替える",
   "pdf": "PDFそのものが一覧になっている収集先だけ true。2MBまで（pdf_max_mb）。写真は取らない",
@@ -24,9 +22,7 @@
    "url": "https://www.bit.courts.go.jp/app/top/pt001/h01",
    "note": "まず「GitHub Actions（海外IP）から応答するか」を確かめるための1本。物件検索・売却結果・過去データが普通のURLで開けるかも、ここから出るリンクで見る（DESIGN 13章の未確認）",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "規約未確定",
-   "torikata_riyuu": "BIT は目的外使用を禁じる。統計利用が当たるかは弁護士確認事項（bit-policy）"
+   "name_column": "未確認"
   },
   {
    "id": "bit-policy",
@@ -37,9 +33,7 @@
    "url": "https://www.bit.courts.go.jp/policy/site_policy.html",
    "note": "本来の趣旨以外の目的での使用と、改ざん・無断転載を禁じている。統計利用が「目的外」に当たるかは弁護士確認事項（DESIGN 10章）。文面が変わったら git の差分で気づけるよう毎日取る",
    "pdf": false,
-   "fetch_every": "月2回",
-   "torikata": "取ってよい",
-   "torikata_riyuu": "規約のページそのもの。読むことは止められていない"
+   "fetch_every": "月2回"
   },
   {
    "id": "bit-help",
@@ -50,9 +44,7 @@
    "url": "https://www.bit.courts.go.jp/help/index.html",
    "note": "売却結果にどの列が載るか（入札本数の有無）を、実物を取る前にここで当たる",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "規約未確定",
-   "torikata_riyuu": "BIT は目的外使用を禁じる。統計利用が当たるかは弁護士確認事項（bit-policy）"
+   "name_column": "未確認"
   },
   {
    "id": "bit-help-result",
@@ -63,9 +55,7 @@
    "url": "https://www.bit.courts.go.jp/help/help04/index.html",
    "note": "**売却結果にどの列が載るかは、ここに書いてある。** `bit-help` は索引だけで、本文はこちら（2026-09-19 に足した）。入札本数が出るか、**不落・不売が載るか**を当てる。実物は POST の画面なので人が保存する。**その前に列を知っておく。**",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "規約未確定",
-   "torikata_riyuu": "BIT は目的外使用を禁じる。統計利用が当たるかは弁護士確認事項（bit-policy）"
+   "name_column": "未確認"
   },
   {
    "id": "bit-help-past",
@@ -76,9 +66,7 @@
    "url": "https://www.bit.courts.go.jp/help/help05/index.html",
    "note": "過去データ（売却済み・3年分）に何が載るか。**結果は遡れるかどうかがここで決まる。**",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "規約未確定",
-   "torikata_riyuu": "BIT は目的外使用を禁じる。統計利用が当たるかは弁護士確認事項（bit-policy）"
+   "name_column": "未確認"
   },
   {
    "id": "bit-help-withdrawn",
@@ -89,9 +77,7 @@
    "url": "https://www.bit.courts.go.jp/help/help03/index.html",
    "note": "取下げ等の検索に何が載るか。取下げは一覧の中止情報にしか出ないので、裏取りの形を当てる。",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "規約未確定",
-   "torikata_riyuu": "BIT は目的外使用を禁じる。統計利用が当たるかは弁護士確認事項（bit-policy）"
+   "name_column": "未確認"
   },
   {
    "id": "bit-schedule-33311",
@@ -103,9 +89,7 @@
    "url": "https://www.bit.courts.go.jp/app/schedule/pr005/h01?courtId=33311",
    "note": "管轄は神戸市全域・明石・三木・三田・洲本・南あわじ・淡路。売却スケジュールは普通のURLでGETできる（唯一そう分かっているページ）",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "規約未確定",
-   "torikata_riyuu": "BIT は目的外使用を禁じる。統計利用が当たるかは弁護士確認事項（bit-policy）"
+   "name_column": "未確認"
   },
   {
    "id": "bit-schedule-33331",
@@ -117,9 +101,7 @@
    "url": "https://www.bit.courts.go.jp/app/schedule/pr005/h01?courtId=33331",
    "note": "管轄は尼崎・西宮・芦屋・伊丹・宝塚・川西・猪名川・丹波篠山・丹波",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "規約未確定",
-   "torikata_riyuu": "BIT は目的外使用を禁じる。統計利用が当たるかは弁護士確認事項（bit-policy）"
+   "name_column": "未確認"
   },
   {
    "id": "bit-schedule-33332",
@@ -131,9 +113,7 @@
    "url": "https://www.bit.courts.go.jp/app/schedule/pr005/h01?courtId=33332",
    "note": "33332 = 神戸地方裁判所姫路支部。2026-09-16 に確認ずみ（人が保存した競売物件検索の画面に courtId_33332 と「神戸地方裁判所姫路支部」が対で入っていた）。管轄は姫路・加古川・高砂・たつの・西脇・小野・加西・加東ほか播磨一帯",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "規約未確定",
-   "torikata_riyuu": "BIT は目的外使用を禁じる。統計利用が当たるかは弁護士確認事項（bit-policy）"
+   "name_column": "未確認"
   },
   {
    "id": "bit-schedule-toyooka",
@@ -145,9 +125,7 @@
    "url": null,
    "note": "BIT の裁判所一覧に豊岡支部が載っていない（2026-09-14 確認。本庁・尼崎・姫路の3つだけ）。但馬の分が本庁にまとめられているのか、BITに出していないのかは未確認。人が BIT で確かめる",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "規約未確定",
-   "torikata_riyuu": "BIT は目的外使用を禁じる。統計利用が当たるかは弁護士確認事項（bit-policy）"
+   "name_column": "未確認"
   },
   {
    "id": "bit-schedule-osaka",
@@ -159,9 +137,7 @@
    "url": "https://www.bit.courts.go.jp/app/schedule/pr005/h01?courtId=33111",
    "note": "大阪市ほかを管轄する本命。court_id は BIT の裁判所一覧で確認（2026-09-14）",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "規約未確定",
-   "torikata_riyuu": "BIT は目的外使用を禁じる。統計利用が当たるかは弁護士確認事項（bit-policy）"
+   "name_column": "未確認"
   },
   {
    "id": "bit-schedule-sakai",
@@ -173,9 +149,7 @@
    "url": "https://www.bit.courts.go.jp/app/schedule/pr005/h01?courtId=33131",
    "note": "管轄は堺市ほか南河内。court_id は BIT の裁判所一覧で確認（2026-09-14）",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "規約未確定",
-   "torikata_riyuu": "BIT は目的外使用を禁じる。統計利用が当たるかは弁護士確認事項（bit-policy）"
+   "name_column": "未確認"
   },
   {
    "id": "bit-schedule-kishiwada",
@@ -187,9 +161,7 @@
    "url": "https://www.bit.courts.go.jp/app/schedule/pr005/h01?courtId=33141",
    "note": "管轄は泉州。court_id は BIT の裁判所一覧で確認（2026-09-14）",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "規約未確定",
-   "torikata_riyuu": "BIT は目的外使用を禁じる。統計利用が当たるかは弁護士確認事項（bit-policy）"
+   "name_column": "未確認"
   },
   {
    "id": "bit-list",
@@ -201,9 +173,7 @@
    "manual": true,
    "note": "**一覧はカード形式（表ではない）。1枚のカード＝1事件で、中に物件が複数ぶら下がる。表示件数の既定は10件なので、保存する前に大きくする（2026-09-16 確認）。** **GETでは再現できないことを確認した（2026-09-15）。** BITのトップから 物件検索・売却結果・過去データへ移るのは JavaScript の tranArea() で、リンクではなくPOSTの画面遷移。普通のURLが無いので、人が inbox に保存する。 入札中・閲覧中の物件一覧。表示件数を「全て」にしてから保存 もとのメモ: 画面遷移（フォーム）でしか出ない見込み。GETで再現できるかを bit-top の偵察で確かめ、できなければこのまま manual。人が inbox/keibai/<court_id>/<日付>-list.html に保存する。表示件数は「全て」にしてから「Webページ、HTMLのみ」で保存",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "規約未確定",
-   "torikata_riyuu": "BIT は目的外使用を禁じる。統計利用が当たるかは弁護士確認事項（bit-policy）"
+   "name_column": "未確認"
   },
   {
    "id": "bit-result",
@@ -215,9 +185,7 @@
    "manual": true,
    "note": "**GETでは再現できないことを確認した（2026-09-15）。** BITのトップから 物件検索・売却結果・過去データへ移るのは JavaScript の tranArea() で、リンクではなくPOSTの画面遷移。普通のURLが無いので、人が inbox に保存する。 開札結果。売却価額と入札本数の元になる もとのメモ: 開札結果（売却価額・入札本数）。乖離率と成立率の元になる。GETで再現できるかは偵察しだい。inbox/keibai/<court_id>/<日付>-result.html",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "規約未確定",
-   "torikata_riyuu": "BIT は目的外使用を禁じる。統計利用が当たるかは弁護士確認事項（bit-policy）"
+   "name_column": "未確認"
   },
   {
    "id": "bit-withdrawn",
@@ -229,9 +197,7 @@
    "manual": true,
    "note": "**一覧そのものに「中止情報」の欄があり、取下げは赤字で「取下」と出る（2026-09-16、実物の写真で確認）。** 基本の取下げ検出にはこの検索は要らないかもしれない。一覧から消えたものの裏取りだけに使う。 **GETでは再現できないことを確認した（2026-09-15）。** BITのトップから 物件検索・売却結果・過去データへ移るのは JavaScript の tranArea() で、リンクではなくPOSTの画面遷移。普通のURLが無いので、人が inbox に保存する。 取下げ等の検索。取下げ率はここでしか出せない もとのメモ: 一覧から消えた物件の裏取り用。取下げ率はここでしか出せない。inbox/keibai/<court_id>/<日付>-withdrawn.html",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "規約未確定",
-   "torikata_riyuu": "BIT は目的外使用を禁じる。統計利用が当たるかは弁護士確認事項（bit-policy）"
+   "name_column": "未確認"
   },
   {
    "id": "bit-past",
@@ -243,9 +209,7 @@
    "manual": true,
    "note": "**GETでは再現できないことを確認した（2026-09-15）。** BITのトップから 物件検索・売却結果・過去データへ移るのは JavaScript の tranArea() で、リンクではなくPOSTの画面遷移。普通のURLが無いので、人が inbox に保存する。 過去データ（売却済み・3年分）。初回のバックフィルだけ もとのメモ: 初回バックフィルだけ。裁判所×種別ごとに年指定で3年分を人が検索して inbox/keibai/<court_id>/<日付>-past-<種別>.html に保存。取下げは過去データからは分からない（統計の但し書きに書く）",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "規約未確定",
-   "torikata_riyuu": "BIT は目的外使用を禁じる。統計利用が当たるかは弁護士確認事項（bit-policy）"
+   "name_column": "未確認"
   },
   {
    "id": "kobai-nta-home",
@@ -258,9 +222,7 @@
    "pdf": false,
    "terms_name": "公共データ利用規約（第1.0版）",
    "terms_summary": "CC BY 4.0 互換。出典を書けば加工・商用可",
-   "name_column": "未確認",
-   "torikata": "取ってよい",
-   "torikata_riyuu": "国税庁の公共データ利用規約（CC BY 4.0 互換）。terms-nta に控えがある"
+   "name_column": "未確認"
   },
   {
    "id": "terms-nta",
@@ -271,9 +233,7 @@
    "url": "https://www.nta.go.jp/chuijiko/copy.htm",
    "note": "公売情報サイトを含む国税庁ページの規約。公共データ利用規約（第1.0版）＝CC BY 4.0互換。弁護士に見せる材料として全文を data/terms/ に残す",
    "pdf": false,
-   "fetch_every": "月2回",
-   "torikata": "取ってよい",
-   "torikata_riyuu": "規約のページそのもの。読むことは止められていない"
+   "fetch_every": "月2回"
   },
   {
    "id": "terms-osaka-pref",
@@ -284,9 +244,7 @@
    "url": "https://www.pref.osaka.lg.jp/o070050/koho/information/use.html",
    "note": "府税の公売ページから張られている規約",
    "pdf": false,
-   "fetch_every": "月2回",
-   "torikata": "取ってよい",
-   "torikata_riyuu": "規約のページそのもの。読むことは止められていない"
+   "fetch_every": "月2回"
   },
   {
    "id": "terms-hyogo-pref",
@@ -297,9 +255,7 @@
    "url": "https://web.pref.hyogo.lg.jp/about_link.html",
    "note": "県税の公売ページから張られている規約。shutten でも同じページを確認している",
    "pdf": false,
-   "fetch_every": "月2回",
-   "torikata": "取ってよい",
-   "torikata_riyuu": "規約のページそのもの。読むことは止められていない"
+   "fetch_every": "月2回"
   },
   {
    "id": "terms-osaka-city",
@@ -310,9 +266,7 @@
    "url": "https://www.city.osaka.lg.jp/main/site_policy/0000000124.html",
    "note": "CC BY 4.0 で出していると書いてある。ただし第三者の権利が混じる場合があるとも書いてあるので、そこを弁護士に見てもらう",
    "pdf": false,
-   "fetch_every": "月2回",
-   "torikata": "取ってよい",
-   "torikata_riyuu": "規約のページそのもの。読むことは止められていない"
+   "fetch_every": "月2回"
   },
   {
    "id": "terms-kobe-city",
@@ -323,9 +277,7 @@
    "url": "https://www.city.kobe.lg.jp/a57337/homepage/rule.html",
    "note": "市有地売却・市税の公売の両方にかかる",
    "pdf": false,
-   "fetch_every": "月2回",
-   "torikata": "取ってよい",
-   "torikata_riyuu": "規約のページそのもの。読むことは止められていない"
+   "fetch_every": "月2回"
   },
   {
    "id": "terms-mof",
@@ -337,9 +289,7 @@
    "note": "**姉妹サイト送り。** 国有財産・公有財産の売払いは、国や自治体が自分の財産を一般競争入札で売るもので、滞納処分による公売とは別の制度。混ざらないよう、こちらでは扱わない（2026-09-15 決定）。もとのメモ: URL未確認（DESIGN 13章）。政府標準利用規約系の見込みだが、確かめていない",
    "pdf": false,
    "handoff": "姉妹サイト",
-   "fetch_every": "月2回",
-   "torikata": "取ってよい",
-   "torikata_riyuu": "規約のページそのもの。読むことは止められていない"
+   "fetch_every": "月2回"
   },
   {
    "id": "kobai-nta-fudosan",
@@ -350,9 +300,7 @@
    "url": "https://www.koubai.nta.go.jp/auctionx/public/hp0241.php",
    "note": "見積価額・所在・公売日が並ぶ。大阪・兵庫に絞る地域パラメータは未確認（DESIGN 13章）。まず全国で取って、絞り方が分かったら url を差し替える",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "取ってよい",
-   "torikata_riyuu": "国税庁の公共データ利用規約（CC BY 4.0 互換）。terms-nta に控えがある"
+   "name_column": "未確認"
   },
   {
    "id": "kobai-nta-kekka",
@@ -363,9 +311,7 @@
    "url": "https://www.koubai.nta.go.jp/auctionx/public/hp001_01.php?pageid=0&doc=17",
    "note": "落札÷見積価額の元になる。入札結果はすぐ消えるので毎日取る",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "取ってよい",
-   "torikata_riyuu": "国税庁の公共データ利用規約（CC BY 4.0 互換）。terms-nta に控えがある"
+   "name_column": "未確認"
   },
   {
    "id": "kobai-nta-net-kekka",
@@ -376,9 +322,7 @@
    "url": "https://www.koubai.nta.go.jp/auctionx/public/hp001_01.php?pageid=0&doc=27",
    "note": "会場公売とは別枠の結果",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "取ってよい",
-   "torikata_riyuu": "国税庁の公共データ利用規約（CC BY 4.0 互換）。terms-nta に控えがある"
+   "name_column": "未確認"
   },
   {
    "id": "kobai-nta-schedule",
@@ -389,9 +333,7 @@
    "url": "https://www.koubai.nta.go.jp/auctionx/public/hp001_01.php?doc=16",
    "note": "次の入札期日を出すのに使う",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "取ってよい",
-   "torikata_riyuu": "国税庁の公共データ利用規約（CC BY 4.0 互換）。terms-nta に控えがある"
+   "name_column": "未確認"
   },
   {
    "id": "kobai-osaka-pref",
@@ -402,9 +344,7 @@
    "url": "https://www.pref.osaka.lg.jp/o050040/zei/alacarte/koubaijohou.html",
    "note": "利用規約は未確認（DESIGN 13章）。公売公告PDFに所有者名が載るかも未確認。載っていても parse で名前を取り出さない",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "未確認",
-   "torikata_riyuu": "規約をまだ読んでいない"
+   "name_column": "未確認"
   },
   {
    "id": "kobai-hyogo-pref",
@@ -415,9 +355,7 @@
    "url": "https://web.pref.hyogo.lg.jp/kk22/koubainooshirase.html",
    "note": "会場公売とインターネット公売のお知らせ。利用規約は未確認",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "未確認",
-   "torikata_riyuu": "規約をまだ読んでいない"
+   "name_column": "未確認"
   },
   {
    "id": "kobai-osaka-city",
@@ -428,9 +366,7 @@
    "url": "https://www.city.osaka.lg.jp/kurashi/category/3009-8-0-0-0-0-0-0-0-0.html",
    "note": "大阪市はCC BY 4.0を明記しているが、ページごとに再確認する。shutten では大阪市が海外IPから応答しなかった前例があるので、取れなければ inbox 運用に切り替える（回り込まない）",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "規約未確定",
-   "torikata_riyuu": "CC BY 4.0 と書いてあるが、第三者の権利が混じる場合があるとも書いてある"
+   "name_column": "未確認"
   },
   {
    "id": "kobai-kobe-city",
@@ -441,9 +377,7 @@
    "url": "https://www.city.kobe.lg.jp/a31463/shise/kobai/estate/index.html",
    "note": "行財政局税務部収税課。1ページに公売実施状況（期間入札の結果）とインターネット公売の有無が並ぶ。表ではなく文章で、物件は1件ずつ書かれている。検索で最初に出る .../koubai/kikannyusatsu.html は404（2026-09-14 確認。検索結果のほうが古い）。利用規約は未確認",
    "pdf": false,
-   "name_column": "未確認",
-   "torikata": "未確認",
-   "torikata_riyuu": "規約をまだ読んでいない"
+   "name_column": "未確認"
   },
   {
    "id": "kokuyu-kinki-yotei",
@@ -456,9 +390,7 @@
    "pdf": true,
    "pdf_labels": "物件調書",
    "pdf_max_mb": 2,
-   "handoff": "姉妹サイト",
-   "torikata": "未確認",
-   "torikata_riyuu": "規約をまだ読んでいない"
+   "handoff": "姉妹サイト"
   },
   {
    "id": "kokuyu-kinki-kekka",
@@ -470,9 +402,7 @@
    "note": "**姉妹サイト送り。** 国有財産・公有財産の売払いは、国や自治体が自分の財産を一般競争入札で売るもので、滞納処分による公売とは別の制度。混ざらないよう、こちらでは扱わない（2026-09-15 決定）。もとのメモ: 受付終了の翌営業日から開札までは応札の有無も出る。落札者名が載る場合、法人名だけを保存し個人名は保存も公開もしない。列（落札価格・落札者名・応札数）と過去の回がどこまで残るかは未確認（DESIGN 13章）",
    "pdf": true,
    "pdf_max_mb": 2,
-   "handoff": "姉妹サイト",
-   "torikata": "未確認",
-   "torikata_riyuu": "規約をまだ読んでいない"
+   "handoff": "姉妹サイト"
   },
   {
    "id": "kokuyu-kinki-senchaku",
@@ -484,9 +414,7 @@
    "note": "**姉妹サイト送り。** 国有財産・公有財産の売払いは、国や自治体が自分の財産を一般競争入札で売るもので、滞納処分による公売とは別の制度。混ざらないよう、こちらでは扱わない（2026-09-15 決定）。もとのメモ: 2026-09-14 に検索で見つけた。入札で売れ残った物件を公表価格で先着1者に売る。随時なので件数はここがいちばん出るはず",
    "pdf": true,
    "pdf_max_mb": 2,
-   "handoff": "姉妹サイト",
-   "torikata": "未確認",
-   "torikata_riyuu": "規約をまだ読んでいない"
+   "handoff": "姉妹サイト"
   },
   {
    "id": "kokuyu-kinki-senchaku-list",
@@ -498,9 +426,7 @@
    "note": "**姉妹サイト送り。** 国有財産・公有財産の売払いは、国や自治体が自分の財産を一般競争入札で売るもので、滞納処分による公売とは別の制度。混ざらないよう、こちらでは扱わない（2026-09-15 決定）。もとのメモ: 先着順の物件と物件調書が並ぶ。**回ごとにURLの番号が変わる**（令和7年度第1回が 0380701、令和8年度第1回が 0380801）。番号が変わると404になるので、入口ページ kokuyu-kinki-senchaku のリンクから拾い直す",
    "pdf": true,
    "pdf_max_mb": 2,
-   "handoff": "姉妹サイト",
-   "torikata": "未確認",
-   "torikata_riyuu": "規約をまだ読んでいない"
+   "handoff": "姉妹サイト"
   },
   {
    "id": "kokuyu-kinki-koji",
@@ -512,9 +438,7 @@
    "note": "**姉妹サイト送り。** 国有財産・公有財産の売払いは、国や自治体が自分の財産を一般競争入札で売るもので、滞納処分による公売とは別の制度。混ざらないよう、こちらでは扱わない（2026-09-15 決定）。もとのメモ: いま入札を受け付けている物件。予定物件のページとは別に、公示中の分がここに出る",
    "pdf": true,
    "pdf_max_mb": 2,
-   "handoff": "姉妹サイト",
-   "torikata": "未確認",
-   "torikata_riyuu": "規約をまだ読んでいない"
+   "handoff": "姉妹サイト"
   },
   {
    "id": "kokuyu-kinki-top",
@@ -525,9 +449,7 @@
    "url": "https://lfb.mof.go.jp/kinki/koho/pageknkhp00100010_00001.html",
    "note": "**姉妹サイト送り。** 国有財産・公有財産の売払いは、国や自治体が自分の財産を一般競争入札で売るもので、滞納処分による公売とは別の制度。混ざらないよう、こちらでは扱わない（2026-09-15 決定）。もとのメモ: 前に入れていた pageknkhp00200005.html は 404 だった（2026-09-14 の偵察）。差し替え先をここにした",
    "pdf": false,
-   "handoff": "姉妹サイト",
-   "torikata": "未確認",
-   "torikata_riyuu": "規約をまだ読んでいない"
+   "handoff": "姉妹サイト"
   },
   {
    "id": "koyu-osaka-pref",
@@ -539,9 +461,7 @@
    "note": "**姉妹サイト送り。** 国有財産・公有財産の売払いは、国や自治体が自分の財産を一般競争入札で売るもので、滞納処分による公売とは別の制度。混ざらないよう、こちらでは扱わない（2026-09-15 決定）。もとのメモ: 今後の入札予定・先着順物件・一般競争入札の結果・サウンディングが1ページに同居する。サウンディングと貸付は取らない。入札自体はKSIで実施するが、案内と結果は府のページに残るのでそちらで追う",
    "pdf": true,
    "pdf_max_mb": 2,
-   "handoff": "姉妹サイト",
-   "torikata": "未確認",
-   "torikata_riyuu": "規約をまだ読んでいない"
+   "handoff": "姉妹サイト"
   },
   {
    "id": "koyu-hyogo-pref",
@@ -552,9 +472,7 @@
    "url": "https://web.pref.hyogo.lg.jp/kk30/pa10_000000015.html",
    "note": "**姉妹サイト送り。** 国有財産・公有財産の売払いは、国や自治体が自分の財産を一般競争入札で売るもので、滞納処分による公売とは別の制度。混ざらないよう、こちらでは扱わない（2026-09-15 決定）。もとのメモ: 一般競争入札（郵送型）のお知らせPDFは6〜8MBあるので取らず、リンクだけ残す。数字がPDFの中にしかないなら、人が inbox/koyu/koyu-hyogo-pref/<日付>-manual.json を置く（DESIGN 9章）。HTML一覧があるかは未確認",
    "pdf": false,
-   "handoff": "姉妹サイト",
-   "torikata": "未確認",
-   "torikata_riyuu": "規約をまだ読んでいない"
+   "handoff": "姉妹サイト"
   },
   {
    "id": "koyu-hyogo-pref-kekka",
@@ -566,9 +484,7 @@
    "note": "**姉妹サイト送り。** 国有財産・公有財産の売払いは、国や自治体が自分の財産を一般競争入札で売るもので、滞納処分による公売とは別の制度。混ざらないよう、こちらでは扱わない（2026-09-15 決定）。もとのメモ: 落札価格が残る。円/㎡の履歴の元になる",
    "pdf": true,
    "pdf_max_mb": 2,
-   "handoff": "姉妹サイト",
-   "torikata": "未確認",
-   "torikata_riyuu": "規約をまだ読んでいない"
+   "handoff": "姉妹サイト"
   },
   {
    "id": "koyu-hyogo-pref-cat",
@@ -579,9 +495,7 @@
    "url": "https://web.pref.hyogo.lg.jp/pref/cate3_618.html",
    "note": "**姉妹サイト送り。** 国有財産・公有財産の売払いは、国や自治体が自分の財産を一般競争入札で売るもので、滞納処分による公売とは別の制度。混ざらないよう、こちらでは扱わない（2026-09-15 決定）。もとのメモ: インターネット一般競争入札の案内など、上2本から漏れた回を拾うための目次",
    "pdf": false,
-   "handoff": "姉妹サイト",
-   "torikata": "未確認",
-   "torikata_riyuu": "規約をまだ読んでいない"
+   "handoff": "姉妹サイト"
   },
   {
    "id": "koyu-osaka-city",
@@ -593,9 +507,7 @@
    "note": "**姉妹サイト送り。** 国有財産・公有財産の売払いは、国や自治体が自分の財産を一般競争入札で売るもので、滞納処分による公売とは別の制度。混ざらないよう、こちらでは扱わない（2026-09-15 決定）。もとのメモ: 2026-09-14 に検索で見つけた。契約管財局のほか、港湾局・都市整備局・水道局も別に売っているので、取りこぼしは入札等実施案件のページで拾う",
    "pdf": true,
    "pdf_max_mb": 2,
-   "handoff": "姉妹サイト",
-   "torikata": "規約未確定",
-   "torikata_riyuu": "CC BY 4.0 と書いてあるが、第三者の権利が混じる場合があるとも書いてある"
+   "handoff": "姉妹サイト"
   },
   {
    "id": "koyu-osaka-city-jisshi",
@@ -606,9 +518,7 @@
    "url": "https://www.city.osaka.lg.jp/sangyo/category/3048-2-1-0-0-0-0-0-0-0.html",
    "note": "**姉妹サイト送り。** 国有財産・公有財産の売払いは、国や自治体が自分の財産を一般競争入札で売るもので、滞納処分による公売とは別の制度。混ざらないよう、こちらでは扱わない（2026-09-15 決定）。もとのメモ: 局をまたいだ実施案件の目次",
    "pdf": false,
-   "handoff": "姉妹サイト",
-   "torikata": "規約未確定",
-   "torikata_riyuu": "CC BY 4.0 と書いてあるが、第三者の権利が混じる場合があるとも書いてある"
+   "handoff": "姉妹サイト"
   },
   {
    "id": "koyu-osaka-city-kekka",
@@ -620,9 +530,7 @@
    "note": "**姉妹サイト送り。** 国有財産・公有財産の売払いは、国や自治体が自分の財産を一般競争入札で売るもので、滞納処分による公売とは別の制度。混ざらないよう、こちらでは扱わない（2026-09-15 決定）。もとのメモ: 落札価格が年度ごとに残る。円/㎡の履歴の元になる",
    "pdf": true,
    "pdf_max_mb": 2,
-   "handoff": "姉妹サイト",
-   "torikata": "規約未確定",
-   "torikata_riyuu": "CC BY 4.0 と書いてあるが、第三者の権利が混じる場合があるとも書いてある"
+   "handoff": "姉妹サイト"
   },
   {
    "id": "koyu-kobe-city",
@@ -633,9 +541,7 @@
    "url": "https://www.city.kobe.lg.jp/a59688/shise/kobai/sell/index.html",
    "note": "**姉妹サイト送り。** 国有財産・公有財産の売払いは、国や自治体が自分の財産を一般競争入札で売るもので、滞納処分による公売とは別の制度。混ざらないよう、こちらでは扱わない（2026-09-15 決定）。もとのメモ: 複数の局にまたがる新着。ここから回ごとのページを拾う。貸付は取らない",
    "pdf": false,
-   "handoff": "姉妹サイト",
-   "torikata": "未確認",
-   "torikata_riyuu": "規約をまだ読んでいない"
+   "handoff": "姉妹サイト"
   },
   {
    "id": "koyu-kobe-city-nyusatsu",
@@ -647,9 +553,7 @@
    "note": "**姉妹サイト送り。** 国有財産・公有財産の売払いは、国や自治体が自分の財産を一般競争入札で売るもので、滞納処分による公売とは別の制度。混ざらないよう、こちらでは扱わない（2026-09-15 決定）。もとのメモ: 回ごとのページと開札月が並ぶ",
    "pdf": true,
    "pdf_max_mb": 2,
-   "handoff": "姉妹サイト",
-   "torikata": "未確認",
-   "torikata_riyuu": "規約をまだ読んでいない"
+   "handoff": "姉妹サイト"
   },
   {
    "id": "koyu-kobe-city-r7",
@@ -661,9 +565,7 @@
    "note": "**姉妹サイト送り。** 国有財産・公有財産の売払いは、国や自治体が自分の財産を一般競争入札で売るもので、滞納処分による公売とは別の制度。混ざらないよう、こちらでは扱わない（2026-09-15 決定）。もとのメモ: 回ごとのページの実物。年度が変わるとURLも変わるので、nyusatsu00 から辿れているかを毎回見る",
    "pdf": true,
    "pdf_max_mb": 2,
-   "handoff": "姉妹サイト",
-   "torikata": "未確認",
-   "torikata_riyuu": "規約をまだ読んでいない"
+   "handoff": "姉妹サイト"
   },
   {
    "id": "koyu-sakai-city",
@@ -675,9 +577,7 @@
    "note": "**姉妹サイト送り。** 国有財産・公有財産の売払いは、国や自治体が自分の財産を一般競争入札で売るもので、滞納処分による公売とは別の制度。混ざらないよう、こちらでは扱わない（2026-09-15 決定）。もとのメモ: 2026-09-14 に検索で見つけた。財産活用課。原則すべて一般競争入札で売る方針を書いている。shutten では堺市の大店立地法ページが見つかっていないが、こちらは別の課で見つかった",
    "pdf": true,
    "pdf_max_mb": 2,
-   "handoff": "姉妹サイト",
-   "torikata": "未確認",
-   "torikata_riyuu": "規約をまだ読んでいない"
+   "handoff": "姉妹サイト"
   },
   {
    "id": "koyu-sakai-city-rikatsuyo",
@@ -688,9 +588,7 @@
    "url": "https://www.city.sakai.lg.jp/sangyo/nyusatsu/koubo/yukokatsuyo/rikatsuyou2019.html",
    "note": "**姉妹サイト送り。** 国有財産・公有財産の売払いは、国や自治体が自分の財産を一般競争入札で売るもので、滞納処分による公売とは別の制度。混ざらないよう、こちらでは扱わない（2026-09-15 決定）。もとのメモ: これから売りに出るかもしれない土地の一覧。まだ公告ではないので status は「予定」で入れる",
    "pdf": false,
-   "handoff": "姉妹サイト",
-   "torikata": "未確認",
-   "torikata_riyuu": "規約をまだ読んでいない"
+   "handoff": "姉妹サイト"
   },
   {
    "id": "seed-kinki-localgov",
@@ -701,9 +599,7 @@
    "url": "https://lfb.mof.go.jp/kinki/np-localgovernment-link_00001.html",
    "note": "**姉妹サイト送り。** 国有財産・公有財産の売払いは、国や自治体が自分の財産を一般競争入札で売るもので、滞納処分による公売とは別の制度。混ざらないよう、こちらでは扱わない（2026-09-15 決定）。もとのメモ: 自治体ページへのリンク集。取り込まない。偵察でリンクを並べて、人が sources.json に足す種にする（Phase 4 で市町へ広げるときの主力）",
    "pdf": false,
-   "handoff": "姉妹サイト",
-   "torikata": "未確認",
-   "torikata_riyuu": "規約をまだ読んでいない"
+   "handoff": "姉妹サイト"
   },
   {
    "id": "seed-mlit-pre",
@@ -714,9 +610,7 @@
    "url": "https://www.mlit.go.jp/totikensangyo/totikensangyo_tk5_000166.html",
    "note": "**姉妹サイト送り。** 国有財産・公有財産の売払いは、国や自治体が自分の財産を一般競争入札で売るもので、滞納処分による公売とは別の制度。混ざらないよう、こちらでは扱わない（2026-09-15 決定）。もとのメモ: 同じくリンク集。貸付けも混ざるので、拾うのは売却だけ",
    "pdf": false,
-   "handoff": "姉妹サイト",
-   "torikata": "未確認",
-   "torikata_riyuu": "規約をまだ読んでいない"
+   "handoff": "姉妹サイト"
   }
  ]
 }
