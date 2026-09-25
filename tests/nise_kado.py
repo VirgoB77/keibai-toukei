@@ -13,6 +13,7 @@
     import nise_kado          # kinko.py と同じ、裸の import
 """
 import contextlib
+import datetime
 import email.message
 import io
 import json
@@ -183,6 +184,15 @@ class Kumitate:
         # **検査では待たない。** 本物の `MATSU`（5秒）で毎回待つと検査が重くなる。
         # 待つこと自体は common/kado.py 側の検査（tests/test_kado.py）が見る
         kw.setdefault("sleep", lambda _n: None)
+        # **門は外へ出す前に、いまの日本時間の日付が RUN_DATE と同じかを見る。** 検査の時計は
+        # 本物の今日ではなく、その回の日付の朝7時に置く（本物の日付で検査の結果が変わらないように）
+        hi = kw.get("today") or (kw.get("env") or {}).get("RUN_DATE")
+        try:
+            asa = datetime.datetime.fromisoformat("%sT07:00:00+09:00" % hi).timestamp()
+        except (TypeError, ValueError):
+            asa = None                 # 読めない日付は、門のほうが落とす（その検査のため）
+        if asa is not None:
+            kw.setdefault("now", lambda: asa)
         return kado.Kado(self.root, REPO, UA, **kw)
 
     def hozon_saki(self, cid=None):
