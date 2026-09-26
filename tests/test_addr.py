@@ -138,11 +138,15 @@ class 住所をそろえる(unittest.TestCase):
         self.assertNotEqual(細かい["addr_key_town"], 粗い["addr_key_town"])
 
     def test_正本が出している例が通る(self):
-        # 共通仕様 4節のテスト例。大字と全角空白が消えて、鍵が両方出ること
+        # 共通仕様 4節のテスト例。大字と全角空白が消えて、番地までの鍵が出ること
         r = normalize("兵庫県", "西宮市", "大字上ケ原　二番町3-5")
         self.assertEqual(r["addr"], "西宮市上ケ原2番町3-5")
         self.assertEqual(r["addr_key"], "28204|上ケ原2番町3-5")
-        self.assertEqual(r["addr_key_town"], "28204|上ケ原2番町")
+        # 町丁目までの鍵は、正本では「②の町丁目一覧で決まる。
+        # **一覧が無いうちは空文字にして記録する（③）**」。このサイトに一覧は無い。
+        # 3-5 の 3 が丁目の略記でないとは、文字だけでは言えない（2026-09-26）
+        self.assertEqual(r["town"], "")
+        self.assertEqual(r["addr_key_town"], "")
 
     def test_コードが引けなければ鍵は空文字(self):
         # 突き合わせに使えない鍵を作るより、空にして後で人が見るほうがよい
@@ -158,6 +162,56 @@ class 住所をそろえる(unittest.TestCase):
         self.assertEqual(r["addr_key"], "")
         self.assertEqual(r["addr_key_town"], "")
         self.assertEqual(r["city_code"], "27127")
+
+
+class 番地落としは番地の印があるときだけ(unittest.TestCase):
+    """2026-09-26・統括判断。
+
+    「丁目」の無い住所では、町名のあとの数字を番地として落として町名を決めていた。
+    ところが「X3-5」「X3-5-1」の 3 は、**丁目の略記かもしれない**（住居表示の
+    3丁目5番1号）。落とすと、3丁目の記録を丁目の無い粗い「X」に丸めてしまう。
+
+    だから、町名のすぐあとが「N番地」「N番」と**書かれているときだけ**決める。
+    印が無ければ決めない（未決）。町名を新しく推し量ることはしない。
+    """
+
+    def 町丁目(self, 住所):
+        return normalize("大阪府", "大阪市北区", 住所)
+
+    def test_番地と書いてあれば決める(self):
+        for 住所 in ("角田町3番25号", "角田町3番地25", "角田町 3 番地",
+                     "角田町三番二十五号", "角田町３番２５号",
+                     "大阪市北区角田町3番25号", "大阪府大阪市北区角田町3番25号",
+                     "大阪市北区－角田町3番25号",
+                     "角田町3番25号 グランフロント大阪"):
+            with self.subTest(住所=住所):
+                r = self.町丁目(住所)
+                self.assertEqual(r["town"], "角田町")
+                self.assertEqual(r["addr_key_town"], "27127|角田町")
+
+    def test_ハイフンだけなら決めない(self):
+        for 住所 in ("角田町3-25", "角田町3-5-1", "角田町3－5－1", "角田町3",
+                     "角田町3-25 グランフロント大阪"):
+            with self.subTest(住所=住所):
+                r = self.町丁目(住所)
+                self.assertEqual(r["town"], "")
+                self.assertEqual(r["addr_key_town"], "")
+
+    def test_決めなくても番地までの鍵は変わらない(self):
+        # 変えるのは町丁目の側だけ。番地までの鍵は、前と同じに出る
+        self.assertEqual(self.町丁目("角田町3-25")["addr_key"], "27127|角田町3-25")
+        self.assertEqual(self.町丁目("角田町3-5-1")["addr_key"], "27127|角田町3-5-1")
+
+    def test_町名の中の番は番地の印にしない(self):
+        # 「七番町」の番は町名。そのあとに番地の印があれば決める、無ければ決めない
+        self.assertEqual(normalize("兵庫県", "西宮市", "甲子園七番町1番2号")["town"], "甲子園7番町")
+        self.assertEqual(normalize("兵庫県", "西宮市", "甲子園7番町1-2")["town"], "")
+
+    def test_丁目と町名だけの住所は変わらない(self):
+        self.assertEqual(self.町丁目("梅田1丁目1番1号")["town"], "梅田1")
+        self.assertEqual(self.町丁目("梅田1丁目1-1")["town"], "梅田1")
+        self.assertEqual(self.町丁目("梅田")["town"], "梅田")
+        self.assertEqual(normalize("兵庫県", "豊岡市", "城崎町湯島")["town"], "城崎町湯島")
 
 
 class 空白が挟まっても同じ鍵になる(unittest.TestCase):
