@@ -113,10 +113,17 @@ _KANJI_NUM = re.compile(r"[〇零一二三四五六七八九十百千]+(?=丁目
 # 数字のうしろが町名の続きのときは、まだ番地に入っていない。
 # 「甲子園七番町」「北十二条西」など。ここで切ると町名が消える。
 _TOWN_AFTER_NUM = re.compile(r"^(番町|番丁|条|線|軒|丁目|町|丁)")
+# 町名のすぐあとが「N番地」「N番」か。どちらも「N番」で始まる。
+# 「7番町」の番は町名の一部なので、町名（town）の側に入り、ここには来ない
+_BANCHI_NO_SHIRUSHI = r"[0-9]+番"
 
 
-def _clean(text):
-    """文字の見た目のちがいを、まとめてそろえる。"""
+def _soroe(text):
+    """_clean() のうち、丁目・番地・番・号をハイフンにする**前まで**。
+
+    番地落とし（normalize）が「町名のすぐあとが N番地・N番 か」を、ハイフンにする前の形で見るために
+    分けた（2026-09-26）。**手順は _clean() と1か所で共有する**（2か所に書くと、片方だけ直る）。
+    """
     s = (text or "").strip()
     s = s.translate(_TO_HAN).translate(_DASHES)
     # **空白を先に落とす**（2026-09-19 に順番を上げた）。
@@ -136,6 +143,12 @@ def _clean(text):
     # 「大字」「字」は書く役所と書かない役所があるので、落としてそろえる
     s = s.replace("大字", "")
     s = re.sub(r"(?<![0-9])字", "", s)
+    return s
+
+
+def _clean(text):
+    """文字の見た目のちがいを、まとめてそろえる。"""
+    s = _soroe(text)
 
     # 丁目・番地・番・号をハイフンにする。
     # ただし「7番町」「1号線」のように町名・道路名の一部のときは残す
@@ -251,6 +264,21 @@ def to_city(text, pref=""):
     return best or ("", "")
 
 
+def _banchi_to_kaite_aru(addr, pref, city, town):
+    """元の住所で、町名（town）のすぐあとが「N番地」「N番」と書かれているか。
+
+    ハイフンにする前の形（_soroe）で見る。頭の都道府県・市区町村は normalize と同じ順で落とす。
+    町名が頭に来ない・印が無い（N-M・N-M-L・N だけ）ときは False（決めない側）。
+    """
+    t = _soroe(addr)
+    for head in (pref + city, city, pref):
+        if head and t.startswith(head):
+            t = t[len(head):]
+            break
+    t = t.lstrip("-")
+    return re.match(re.escape(town) + _BANCHI_NO_SHIRUSHI, t) is not None
+
+
 # ---------------------------------------------------------------- 入口
 
 def normalize(pref, city, addr):
@@ -324,6 +352,13 @@ def normalize(pref, city, addr):
         town = town.lstrip("-")
     if not town:
         town = _town(core)
+        # **番地落としで決めるのは、町名のすぐあとが「N番地」「N番」と書かれているときだけ**
+        # （2026-09-26・統括判断）。「X3-5」「X3-5-1」「X3」の 3 は、丁目の略記かもしれない
+        # （住居表示の 3丁目5番1号）。決めると粗い「X」に丸めてしまうので、印が無ければ決めない
+        # （未決。正本 4節③「推測で埋めない」）。町名を新しく推し量ることはしない。
+        # 数字の無い住所（町名まで）は、落とすものが無いのでそのまま
+        if town and town != core and not _banchi_to_kaite_aru(addr, pref, city, town):
+            town = ""
     # 表示用の住所は市区町村から書く。よそのサイトに渡したとき、
     # 市区町村の欄を見なくても場所が分かるようにするため
     display = (city + s) if (city and s) else (s or city)
