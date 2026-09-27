@@ -151,7 +151,12 @@ def is_atochi(row):
 
     落とすほうを先に見る。事業用の語と住まいの語が混じっていたら
     （「店舗兼住宅」など）、落とすほうを採る。
+
+    **安定した鍵（`key`）が無い行も渡さない。** `id` はその鍵で作る。鍵が無いと、
+    同じ物件が日によって別の `id` になる（正本 6節「同じ届出は毎日同じ `id` になること」）。
     """
+    if not row.get("key"):
+        return False
     if row.get("system") in PRIVATE_SYSTEMS:
         return False
     if is_residential(row):
@@ -182,20 +187,21 @@ def sold_date(row):
 
 def build(rows):
     """条件に合う行だけを、渡す形にして並べる。"""
-    out, seq = [], {}
+    out = []
     for row in rows:
         if not is_atochi(row):
             continue
         a = normalize(row.get("pref"), row.get("city"), row.get("address"))
         d = sold_date(row)
         src = (row.get("sources") or [row.get("system") or ""])[0]
-        seq[(src, d)] = seq.get((src, d), 0) + 1
         key = re.sub(r"[^A-Za-z0-9._-]", "-", str(row.get("key") or ""))
         out.append({
             # **id の頭は接頭辞。site_id ではない**（正本 6節
             # 「接頭辞は site と同じでも短い別名でもよい。一致は求めない」）。
-            # 1つ目が「どのサイトか」、2つ目が「競売か公売か」で役割が違う
-            "id": "%s:%s:%s:%d" % (PREFIX, src, d, seq[(src, d)]),
+            # 1つ目が「どのサイトか」、2つ目が「競売か公売か」で役割が違う。
+            # **最後は並び順の連番ではなく、その行の鍵（key）**（make_index.py と同じ。
+            # 正本 6節）。連番だと、行の並びが変わっただけで同じ物件の id が入れ替わる
+            "id": "%s:%s:%s:%s" % (PREFIX, src, d, row["key"]),
             "kind": "跡地/%s" % (row.get("kind") or "その他"),
             "date": d,
             "city_code": a["city_code"],

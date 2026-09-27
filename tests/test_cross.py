@@ -243,5 +243,31 @@ class 紙の表が効いていないことを紙に書く(unittest.TestCase):
                       "効いていない範囲の数が紙に出ていない")
 
 
+class 渡すidは並び順で変わらない(unittest.TestCase):
+    """正本 6節「同じ届出は毎日同じ `id` になること」（make_index.py の 39① と同じ直し・2026-09-28）。
+
+    前は `<接頭辞>:<出どころ>:<日付>:<並び順の連番>` で、同じ出どころ・同じ日付の行が
+    2つあると、行の並びが変わっただけで同じ物件の id が入れ替わった。
+    """
+
+    def 行たち(self):
+        return [行(key="k-a", address="中津3丁目1番1号"), 行(key="k-b", address="中津3丁目2番2号")]
+
+    def test_並びを逆にしても_同じ物件は同じid(self):
+        rows = self.行たち()
+        mae = {r["url"]: r["id"] for r in make_cross.build(rows)["records"]}
+        ato = {r["url"]: r["id"] for r in make_cross.build(list(reversed(rows)))["records"]}
+        self.assertEqual(len(mae), 2, "試す行が跡地になっていない（検査の前提が崩れている）")
+        self.assertEqual(mae, ato, "行の並びを変えただけで、同じ物件の id が変わった")
+
+    def test_idの最後はその行の鍵(self):
+        recs = make_cross.build(self.行たち())["records"]
+        self.assertEqual(sorted(r["id"].rsplit(":", 1)[-1] for r in recs), ["k-a", "k-b"])
+
+    def test_鍵の無い行は渡さない(self):
+        self.assertFalse(make_cross.is_atochi(行(key="")))
+        self.assertEqual(make_cross.build([行(key="")])["records"], [])
+
+
 if __name__ == "__main__":
     unittest.main()
