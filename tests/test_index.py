@@ -1017,5 +1017,41 @@ class 単位の語を手で書かない(unittest.TestCase):
                       "紙の名乗りが、いま数えている単位と合っていない")
 
 
+class 公開のidは並び順で変わらない(unittest.TestCase):
+    """正本 6節「同じ届出は毎日同じ `id` になること」（残作業 39①・2026-09-28）。
+
+    前は `<接頭辞>:<出どころ>:<日付>:<並び順の連番>` だった。同じ出どころ・同じ日付の
+    行が2つあると、**行の並びが変わっただけで、同じ物件の id が入れ替わる。**
+    いまは最後をその行の鍵（`key`）にしている。鍵の無い行は個票にしない（件数で数える）。
+    """
+
+    def 行たち(self):
+        # 同じ出どころ・同じ日付の法人の行を2つ（前の作りだと、連番で見分けていた）
+        return [行(key="k-a", winner_name="株式会社あ", kind_raw="工場"),
+                行(key="k-b", winner_name="株式会社い", kind_raw="工場")]
+
+    def test_並びを逆にしても_同じ物件は同じid(self):
+        rows = self.行たち()
+        mae = {r["title"] + r["party"]: r["id"] for r in make_index.build(rows)["records"]}
+        ato = {r["title"] + r["party"]: r["id"]
+               for r in make_index.build(list(reversed(rows)))["records"]}
+        self.assertEqual(len(mae), 2, "試す行が個票になっていない（検査の前提が崩れている）")
+        self.assertEqual(mae, ato, "行の並びを変えただけで、同じ物件の id が変わった")
+
+    def test_idの最後はその行の鍵(self):
+        recs = make_index.build(self.行たち())["records"]
+        self.assertEqual(sorted(r["id"].rsplit(":", 1)[-1] for r in recs), ["k-a", "k-b"])
+
+    def test_鍵の無い行は個票にせず_件数で数える(self):
+        # 升に数えられる形の行（国有財産。「個票に出さなかった行は升に残す」と同じ形）で、鍵だけ空にする
+        row = 行(key="", system="kokuyu", pref="大阪府", city="豊中市", address="○○町1番1",
+                 kind="工場", kind_raw="工場", winner_name="○○株式会社", first_seen="2026-09-01",
+                 month_kokoku="2026-09", case_no="X1", item_no="1", property_key="k1")
+        out = make_index.build([row])
+        self.assertEqual(out["records"], [], "鍵の無い行が個票に出た（id が日によって変わる）")
+        codes = {c["city_code"] for c in out["counts_by_city"]}
+        self.assertIn("27203", codes, "鍵の無い行を、件数でも数えていない（黙って捨てた）")
+
+
 if __name__ == "__main__":
     unittest.main()

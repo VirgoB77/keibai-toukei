@@ -172,7 +172,13 @@ def shows_detail(row):
     個票として扱わない（競売・公売の入札中物件、居住用途の建物、
     住居系用途地域）」。法人が買った土地でも、そこに居宅が建っていれば
     住んでいる人がいる。買い手が誰かと、住んでいる人がいるかは別の話。
+
+    **安定した鍵（`key`）が無い行も、個票にしない**（件数で数える）。
+    個票の `id` はその鍵で作る。鍵が無いと、同じ物件が日によって別の `id` になる
+    （正本 6節「同じ届出は毎日同じ `id` になること」）。
     """
+    if not row.get("key"):
+        return False
     if row.get("system") in PRIVATE_SYSTEMS:
         return False
     if privacy.is_lived_in(row):
@@ -231,7 +237,7 @@ def load_rows():
 def build(rows, today=None):
     """行データから index.json の中身を組み立てる。"""
     today = today or today_str()
-    records, seq = [], {}
+    records = []
     # 切れた法人名は「同じデータの中の別の名前の先頭か」で見分けるので、
     # 先に全部の名前を集めておく
     names = [r.get("winner_name") for r in rows if r.get("winner_name")]
@@ -245,14 +251,16 @@ def build(rows, today=None):
 
         src = (row.get("sources") or [row.get("system") or ""])[0]
         d = pick_date(row)
-        seq[(src, d)] = seq.get((src, d), 0) + 1
         kind, _reason = privacy.classify_party(row.get("winner_name"), names)
         corp = kind == privacy.CORP
         records.append({
             # **id の頭は接頭辞。site_id ではない**（正本 6節
             # 「接頭辞は site と同じでも短い別名でもよい。一致は求めない」）。
-            # 1つ目が「どのサイトか」、2つ目が「競売か公売か」で役割が違う
-            "id": "%s:%s:%s:%d" % (PREFIX, src, d, seq[(src, d)]),
+            # 1つ目が「どのサイトか」、2つ目が「競売か公売か」で役割が違う。
+            # **最後は並び順の連番ではなく、その行の鍵（key）**（正本 6節「連番は日をまたいで
+            # 安定しないので、届出ごとの安定した鍵を連番の代わりに使ってよい」）。
+            # 連番だと、行の並びが変わっただけで同じ物件の id が入れ替わる
+            "id": "%s:%s:%s:%s" % (PREFIX, src, d, row["key"]),
             "title": make_title(row),
             "kind": "%s/%s" % (SYSTEM_LABEL.get(row.get("system"), "その他"),
                                stage_of(row)),
