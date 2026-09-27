@@ -39,6 +39,9 @@ set -e
 cd "$(dirname "$0")/.."
 
 find . -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+# 検査の中の偽の実行（偵察のまねごと）が、**本物の実行のまとめ（job summary）に書かない**ように外す
+# （2026-09-27。外さずに走らせると、検査の偽の「まだ置かれていないもの」等がまとめに出る）
+unset GITHUB_STEP_SUMMARY
 
 LOG=${CHECK_LOG:-/tmp/keibai-check.log}
 if ! python3 -m unittest discover -s tests > "$LOG" 2>&1; then
