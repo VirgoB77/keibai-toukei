@@ -54,14 +54,47 @@ ONLY = "common/jst.py"
 SKIP_DIRS = (".git", "__pycache__", "data", "inbox", "_raw")
 
 
-def py_files():
-    for cur, dirs, files in os.walk(ROOT):
-        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+def py_files(ne=ROOT):
+    # **中に .git がある階も歩かない**（2026-09-27）。workflow が作業場所の中に出す**別の置き場**
+    # （予約台帳 `_yoyaku/` など）で、この置き場の .py ではない。予約台帳に試験の .py があり、
+    # 大型店日報では取得可否確認の「検査する」段がそれを咎めて落ちた。ここも同じ並び（台帳を出したあとに検査）。
+    # **名前で足さない。** 別の置き場かどうか（.git があるか）で外す
+    for cur, dirs, files in os.walk(ne):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS
+                   and not os.path.exists(os.path.join(cur, d, ".git"))]
         for name in sorted(files):
             if not name.endswith(".py"):
                 continue
-            rel = os.path.relpath(os.path.join(cur, name), ROOT)
+            rel = os.path.relpath(os.path.join(cur, name), ne)
             yield rel.replace(os.sep, "/"), os.path.join(cur, name)
+
+
+class 別の置き場は歩かない(unittest.TestCase):
+    """作業場所の中に出した別の置き場（.git がある階）の .py は、この置き場の .py ではない。"""
+
+    def test_入れ子の置き場の_pyは拾わない(self):
+        import shutil
+        import tempfile
+        ne = tempfile.mkdtemp()
+        try:
+            for rel in ("a.py", "fukai/b.py", "_yoyaku/kyousou/c.py", "_yoyaku/.git/HEAD",
+                        "betsu/.git", "betsu/d.py", "_yoyaku_nise/e.py"):
+                p = os.path.join(ne, *rel.split("/"))
+                os.makedirs(os.path.dirname(p), exist_ok=True)
+                with io.open(p, "w", encoding="utf-8") as f:
+                    f.write("x = 1\n")
+            self.assertEqual(sorted(rel for rel, _ in py_files(ne)),
+                             ["_yoyaku_nise/e.py", "a.py", "fukai/b.py"])
+        finally:
+            shutil.rmtree(ne, ignore_errors=True)
+
+    def test_check_shは検査の前に実行のまとめを外す(self):
+        """検査の中の偽の実行（偵察のまねごと）が、本物の実行のまとめ（job summary）に書かないため。"""
+        with io.open(os.path.join(ROOT, "scripts", "check.sh"), encoding="utf-8") as f:
+            src = f.read()
+        i = src.find("\nunset GITHUB_STEP_SUMMARY")
+        j = src.find("python3 -m unittest")
+        self.assertTrue(0 <= i < j, "scripts/check.sh が、検査の前に GITHUB_STEP_SUMMARY を外していない")
 
 
 class 時計を見るのは1か所(unittest.TestCase):
