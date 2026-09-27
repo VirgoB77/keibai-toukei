@@ -97,20 +97,20 @@ def card(**kae):
     return c
 
 
-def shounin_of(cid, c, ai=False, bot=False, **kae):
-    """カード `c`（id=`cid`）にそのまま効く承認の中身。"""
+def shounin_of(cid, c, **kae):
+    """カード `c`（id=`cid`）にそのまま効く承認の中身（承認した者は運営者。2026-09-28）。"""
     s = {"カード": cid, "運営者承認": "承認", "承認したカード版": c["カード版"],
-         "承認時カード指紋": kado.card_shimon(c), "承認日": "2026-09-24"}
+         "承認時カード指紋": kado.card_shimon(c), "承認日": "2026-09-24",
+         "approved_by": "operator", "entered_by": "operator"}
     s.update(kae)
     return s
 
 
-def repo(cards, daicho=None, shounin=None, ai_shounin=()):
+def repo(cards, daicho=None, shounin=None):
     """一時フォルダに、カード・相手台帳・承認を置いた git の置き場を作る。
 
-    `shounin` は {カードid: 承認の中身}。`ai_shounin` に挙げた id の承認だけは
-    AI の commit の印（Co-Authored-By: Claude）を付けて保存する
-    （＝そのカードは承認が数えられない、を作るため）。
+    `shounin` は {カードid: 承認の中身}。承認した者は中身の approved_by で読む
+    （commit した者からは推し量らない。2026-09-28）。
 
     戻り値は root のパス。**呼んだ側が後始末をすること**
     （`shutil.rmtree(root, ignore_errors=True)`）。
@@ -131,11 +131,7 @@ def repo(cards, daicho=None, shounin=None, ai_shounin=()):
         with open(path, "w", encoding="utf-8") as f:
             json.dump(s, f, ensure_ascii=False)
         git(root, "add", "-A")
-        msg = "承認 %s" % cid
-        env = None
-        if cid in ai_shounin:
-            msg += "\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
-        git(root, "commit", "-q", "-m", msg, env=env)
+        git(root, "commit", "-q", "-m", "承認 %s" % cid)
     return root
 
 
