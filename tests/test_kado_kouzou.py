@@ -47,6 +47,7 @@ KADO_HONTAI = "common/kado.py"
 MAWARIKOMU = (
     "build_opener", "http.client", "HTTPSConnection", "HTTPConnection",
     "requests", "urllib3", "socket.create_connection", "cafile=",
+    "capath=", "OpenerDirector",       # （2026-10-01 独立監査 Q2：capath=・OpenerDirector を足した。urlopen の context=・cafile=・capath= は門でも止める）
 )
 KADO_SOTO = "# kado-soto"
 
